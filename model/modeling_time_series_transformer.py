@@ -513,6 +513,8 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
         self.layers = nn.ModuleList([TimeSeriesTransformerEncoderLayer(config) for _ in range(config.encoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
+        self.quries = self.latents = nn.Parameter(torch.randn(config.num_queries, config.d_model))
+
         self.gradient_checkpointing = False
         # Initialize weights and apply final processing
         self.post_init()
@@ -565,6 +567,9 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
 
         hidden_states = self.layernorm_embedding(hidden_states + embed_pos)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+
+        # replace right most of the input sequence with learnable queries
+        hidden_states[:, -self.config.num_queries:, :] = self.quries
 
         # expand attention_mask
         if attention_mask is not None:
