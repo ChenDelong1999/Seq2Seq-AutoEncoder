@@ -167,6 +167,7 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
         init_std: float = 0.02,
         use_cache=True,
         num_queries: int = 64,
+        d_latent: int = 1024,
         **kwargs,
     ):
         # time series specific configuration
@@ -182,6 +183,8 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
         self.num_static_real_features = num_static_real_features
         self.num_static_categorical_features = num_static_categorical_features
         self.num_queries = num_queries
+        self.d_latent = d_latent
+
         if cardinality and num_static_categorical_features > 0:
             if len(cardinality) != num_static_categorical_features:
                 raise ValueError(

@@ -19,7 +19,7 @@ from transformers.utils import OptionalDependencyNotAvailable, _LazyModule, is_t
 _import_structure = {
     "configuration_time_series_transformer": [
         "TIME_SERIES_TRANSFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP",
-        "TimeSeriesTransformerConfig",
+        "Seq2SeqAutoEncoderConfig",
     ],
 }
 
@@ -32,7 +32,7 @@ else:
     _import_structure["modeling_time_series_transformer"] = [
         "TIME_SERIES_TRANSFORMER_PRETRAINED_MODEL_ARCHIVE_LIST",
         "TimeSeriesTransformerForPrediction",
-        "TimeSeriesTransformerModel",
+        "Seq2SeqAutoEncoderModel",
         "TimeSeriesTransformerPreTrainedModel",
     ]
 
