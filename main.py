@@ -11,7 +11,7 @@ from torchvision.datasets import CIFAR100
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.distributed import init_process_group, destroy_process_group
+from torch.distributed import init_process_group, destroy_process_group, barrier
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
@@ -46,12 +46,12 @@ def train(model, dataloader, test_loader, optimizer, scheduler, device, writer, 
             writer.add_scalar('train/lr', scheduler.get_lr()[0], step)
 
         if i % args.log_interval == 0 and args.rank == 0:
-            print(f'Epoch {epoch+1}/{args.epochs}, Stpe {i}/{len(dataloader)}, Global Step {step}\tLoss: {loss.item():.7f}, LR: {scheduler.get_lr()[0]:.7f}')
+            print(f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)}, Global Step {step}\tLoss: {loss.item():.7f}, LR: {scheduler.get_lr()[0]:.7f}')
 
         scheduler.step()
         step += 1
 
-        if i!=0 and i % args.save_interval == 0 and args.rank == 0:
+        if step!=0 and step % args.save_interval == 0 and args.rank == 0:
             checkpoint_path = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i}.pt')
             torch.save(model.state_dict(), checkpoint_path)
             print(f'Saved checkpoint: {checkpoint_path}')
@@ -121,16 +121,35 @@ def main(rank, world_size, args):
     args.rank = rank
     model_seq_length = args.max_seq_length + args.num_queries + 1 # additional one starting token
 
-    train_dataset = SeqImgClsDataset(
-        dataset=CIFAR100(root=args.data_dir, train=True, download=True, transform=transforms.ToTensor()),
-        max_seq_length=args.max_seq_length,
-        num_queries=args.num_queries,
-    )
-    test_dataset = SeqImgClsDataset(
-        dataset=CIFAR100(root=args.data_dir, train=False, download=True, transform=transforms.ToTensor()),
-        max_seq_length=args.max_seq_length,
-        num_queries=args.num_queries,
-    )
+    if args.rank == 0:
+        train_dataset = SeqImgClsDataset(
+            dataset=CIFAR100(root=args.data_dir, train=True, download=True, transform=None),
+            max_seq_length=args.max_seq_length,
+            num_queries=args.num_queries,
+        )
+        test_dataset = SeqImgClsDataset(
+            dataset=CIFAR100(root=args.data_dir, train=False, download=True, transform=None),
+            max_seq_length=args.max_seq_length,
+            num_queries=args.num_queries,
+        )
+    if world_size > 1:
+        barrier()
+
+    if args.rank != 0:
+        train_dataset = SeqImgClsDataset(
+            dataset=CIFAR100(root=args.data_dir, train=True, download=True, transform=None),
+            max_seq_length=args.max_seq_length,
+            num_queries=args.num_queries,
+        )
+        test_dataset = SeqImgClsDataset(
+            dataset=CIFAR100(root=args.data_dir, train=False, download=True, transform=None),
+            max_seq_length=args.max_seq_length,
+            num_queries=args.num_queries,
+        )
+    if world_size > 1:
+        barrier()
+
+    
 
     train_dataloader = DataLoader(
         train_dataset, 
@@ -211,6 +230,11 @@ def main(rank, world_size, args):
         for epoch in range(args.epochs):
             train_dataloader.sampler.set_epoch(epoch)
             train(model, train_dataloader, test_dataloader, optimizer, scheduler, device, writer, epoch, args)
+        
+        if args.rank == 0:
+            checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i}')
+            model.module.save_pretrained(checkpoint_dir)
+            print(f'Saved huggingface model: {checkpoint_dir}')
 
     elif args.rank == 0:
         test_mse = evaluate(model, test_dataloader, device, writer, step=0, args=args)
@@ -243,7 +267,7 @@ if __name__ == '__main__':
     parser.add_argument('--d_latent', type=int, default=512, help='dimensionality of the latent space')
 
     # Training parameters
-    parser.add_argument('--lr', type=float, default=5e-5, help='learning rate')
+    parser.add_argument('--lr', type=float, default=5e-4, help='learning rate')
     parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train')
     parser.add_argument('--log_interval', type=int, default=100, help='number of steps between each logging')
     parser.add_argument('--save_interval', type=int, default=1000, help='number of epochs between each checkpoint saving')
@@ -252,10 +276,22 @@ if __name__ == '__main__':
     # Evaluation parameters
     parser.add_argument('--eval_only', action='store_true', help='evaluate the model on the test set without training')
     parser.add_argument('--n_generation', type=int, default=5, help='number of generations to run during evaluation')
-    parser.add_argument('--n_tsne_samples', type=int, default=1000, help='number of samples to run T-SNE on during evaluation')
+    parser.add_argument('--n_tsne_samples', type=int, default=5000, help='number of samples to run T-SNE on during evaluation')
 
     args = parser.parse_args()
 
 
     world_size = torch.cuda.device_count()
     mp.spawn(main, args=(world_size, args, ), nprocs=world_size)
+
+"""
+
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 python main.py \
+    --log_interval=10 --save_interval=1000 \
+    --batch_size=16 --lr=5e-4  \
+    --d_model 1024 --encoder_layers 12 --decoder_layers 12 \
+    --encoder_attention_heads 8 --decoder_attention_heads 8 \
+    --encoder_ffn_dim 4096 --decoder_ffn_dim 4096 \
+    --num_queries 64 --d_latent 1024
+    
+"""
