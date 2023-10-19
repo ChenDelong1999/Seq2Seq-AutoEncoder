@@ -4,7 +4,7 @@ import torchvision.transforms as transforms
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-import cv2
+# import cv2
 import random
 
 
@@ -18,14 +18,12 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         self.max_seq_length = max_seq_length
         self.num_queries = num_queries
         self.num_channels = 3 + 1 + 1  # RGB + `\n` + is_data
+        self.index_mapping = np.random.permutation(len(self.dataset))
 
     def resize(self, image, width, height):
-        # print(f'\nRaw image: {image.shape}\n{image}')
-        image = image.numpy()
-        image = np.transpose(image, (1, 2, 0))
-        image = cv2.resize(image, (width, height))
-        image = np.transpose(image, (2, 0, 1))
-        image = torch.from_numpy(image)
+
+        image = transforms.Resize((height, width))(image)
+        image = transforms.ToTensor()(image)
         # print(f'\nResized image: {image.shape}\n{image}')
 
         # add another channel to the image
@@ -64,6 +62,7 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
     
 
     def __getitem__(self, index):
+        index = self.index_mapping[index]
         image, label = self.dataset[index]
 
         width = np.random.randint(16, 32)
