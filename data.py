@@ -1,24 +1,65 @@
+
+import numpy as np
+import random
+
 import torch
 import torchvision
 import torchvision.transforms as transforms
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
-# import cv2
-import random
+
+from torchvision.datasets import CIFAR10, CIFAR100, STL10
 
 
 # Define the transforms to be applied to the data
 transform = transforms.Compose([transforms.ToTensor()])
 
+def get_dataset(args):
+    if args.dataset=='cifar10':
+        train_dataset = SeqImgClsDataset(
+            dataset=CIFAR10(root=args.data_dir, train=True, download=True, transform=None),
+            img_size=32,
+            num_queries=args.num_queries,
+        )
+        test_dataset = SeqImgClsDataset(
+            dataset=CIFAR10(root=args.data_dir, train=False, download=True, transform=None),
+            img_size=32,
+            num_queries=args.num_queries,
+        )
+    elif args.dataset=='cifar100':
+        train_dataset = SeqImgClsDataset(
+            dataset=CIFAR100(root=args.data_dir, train=True, download=True, transform=None),
+            img_size=32,
+            num_queries=args.num_queries,
+        )
+        test_dataset = SeqImgClsDataset(
+            dataset=CIFAR100(root=args.data_dir, train=False, download=True, transform=None),
+            img_size=32,
+            num_queries=args.num_queries,
+        )
+    elif args.dataset=='stl10':
+        train_dataset = SeqImgClsDataset(
+            dataset=STL10(root=args.data_dir, split='train+unlabeled', download=True, transform=None),
+            img_size=64,
+            num_queries=args.num_queries,
+        )
+        test_dataset = SeqImgClsDataset(
+            dataset=STL10(root=args.data_dir, split='test', download=True, transform=None),
+            img_size=64,
+            num_queries=args.num_queries,
+        )
+    return train_dataset, test_dataset
+
+
 # Define a custom dataset class
 class SeqImgClsDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, max_seq_length=1024, num_queries=64):
+    def __init__(self, dataset, img_size=1024, num_queries=64):
         self.dataset = dataset
-        self.max_seq_length = max_seq_length
+        self.img_size = img_size
+        self.max_seq_length = img_size * img_size
         self.num_queries = num_queries
         self.num_channels = 3 + 1 + 1  # RGB + `\n` + is_data
-        self.index_mapping = np.random.permutation(len(self.dataset))
+        self.index_mapping = np.random.permutation(len(self.dataset)) # shuffle the dataset
 
     def resize(self, image, width, height):
 
@@ -65,8 +106,8 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         index = self.index_mapping[index]
         image, label = self.dataset[index]
 
-        width = np.random.randint(16, 32)
-        height = np.random.randint(16, 32)
+        width = np.random.randint(self.img_size/2, self.img_size)
+        height = np.random.randint(self.img_size/2, self.img_size)
         # width, height = 32, 32
         image = self.resize(image, width, height)
 

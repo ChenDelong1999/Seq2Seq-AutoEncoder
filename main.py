@@ -6,7 +6,6 @@ import time
 import torch
 import torch.multiprocessing as mp
 import torchvision.transforms as transforms
-from torchvision.datasets import CIFAR100
 
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -16,7 +15,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
 
-from data import SeqImgClsDataset
+from data import get_dataset
 from model import Seq2SeqAutoEncoderConfig, Seq2SeqAutoEncoderModel
 from utils import get_params_count_summary, save_hf_pretrained_model
 from evaluate import evaluate
@@ -73,37 +72,19 @@ def main(rank, world_size, args):
     ddp_setup(rank, world_size)
     
     args.rank = rank
-    model_seq_length = args.max_seq_length + args.num_queries + 1 # additional one starting token
 
     if args.rank == 0:
-        train_dataset = SeqImgClsDataset(
-            dataset=CIFAR100(root=args.data_dir, train=True, download=True, transform=None),
-            max_seq_length=args.max_seq_length,
-            num_queries=args.num_queries,
-        )
-        test_dataset = SeqImgClsDataset(
-            dataset=CIFAR100(root=args.data_dir, train=False, download=True, transform=None),
-            max_seq_length=args.max_seq_length,
-            num_queries=args.num_queries,
-        )
+        train_dataset, test_dataset = get_dataset(args)
     if world_size > 1:
         barrier()
 
     if args.rank != 0:
-        train_dataset = SeqImgClsDataset(
-            dataset=CIFAR100(root=args.data_dir, train=True, download=True, transform=None),
-            max_seq_length=args.max_seq_length,
-            num_queries=args.num_queries,
-        )
-        test_dataset = SeqImgClsDataset(
-            dataset=CIFAR100(root=args.data_dir, train=False, download=True, transform=None),
-            max_seq_length=args.max_seq_length,
-            num_queries=args.num_queries,
-        )
+        train_dataset, test_dataset = get_dataset(args)
     if world_size > 1:
         barrier()
 
-    
+    args.max_seq_length = train_dataset.max_seq_length
+    model_seq_length = args.max_seq_length + args.num_queries + 1 # additional one starting token
 
     train_dataloader = DataLoader(
         train_dataset, 
@@ -150,19 +131,14 @@ def main(rank, world_size, args):
     device = torch.device('cuda')
 
     if args.pretrained is not None:
-        # message = model.load_state_dict(torch.load(args.pretrained, map_location=device), strict=False)
-        # print(f'Loaded pretrained weights from {args.pretrained}: {message}')
         model = Seq2SeqAutoEncoderModel.from_pretrained(args.pretrained)
     else:
         model = Seq2SeqAutoEncoderModel(config)
 
     model = DDP(model.to(device), device_ids=[rank], find_unused_parameters=False)
 
-
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
-    # scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs * len(train_dataloader))
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(train_dataloader), epochs=args.epochs, pct_start=0.05)
-
 
     # Set up TensorBoard logging
     if args.rank == 0:
@@ -177,7 +153,10 @@ def main(rank, world_size, args):
             print(f'\t{k}: {v}')
         print('='*64)
 
-        comment = f'-eval_only={args.eval_only}'
+        total_params = round(sum(p.numel() for p in model.parameters()) / 1e9 ,2)
+        comment = f'-{args.dataset}-[model={total_params}B]-[lr{args.lr}-bs{args.batch_size}-ngpu{world_size}]'
+        if args.eval_only:
+            comment += '-eval_only'
         writer = SummaryWriter(comment=comment)
         print(f'Writing logs to {writer.log_dir}')
         args.checkpoint_dir = os.path.join(writer.log_dir, 'checkpoints')
@@ -203,10 +182,13 @@ def main(rank, world_size, args):
 
 if __name__ == '__main__':
     # Define command line arguments
-    parser = argparse.ArgumentParser(description='Train a time series transformer model on CIFAR100 dataset.')
-    parser.add_argument('--data_dir', type=str, default='dataset', help='path to dataset directory')
-    parser.add_argument('--max_seq_length', type=int, default=1024, help='maximum sequence length')
+    parser = argparse.ArgumentParser(description='Seq2Seq-AutoEncoder')
+    # parser.add_argument('--max_seq_length', type=int, default=1024, help='maximum sequence length')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size')
+
+    # Data parameters
+    parser.add_argument('--dataset', type=str, default='CIFAR100')
+    parser.add_argument('--data_dir', type=str, default='dataset', help='path to dataset directory')
 
     # Model parameters
     parser.add_argument('--d_model', type=int, default=512, help='dimensionality of the model')
@@ -235,25 +217,15 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-
     world_size = torch.cuda.device_count()
     mp.spawn(main, args=(world_size, args, ), nprocs=world_size)
 
 """
 
 CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 python main.py \
+    --dataset stl10 \
     --log_interval=10 --eval_interval 500 --save_interval=2000 \
-    --batch_size=16 --lr=5e-4  \
-    --d_model 1024 --encoder_layers 12 --decoder_layers 12 \
-    --encoder_attention_heads 8 --decoder_attention_heads 8 \
-    --encoder_ffn_dim 1024 --decoder_ffn_dim 1024 \
-    --num_queries 64 --d_latent 1024
-    
-
-CUDA_VISIBLE_DEVICES=1 python main.py --eval_only\
-    --pretrained '/cpfs/user/chendelong/Seq2Seq-AutoEncoder/runs/Oct19_17-03-57_host19-eval_only=False/checkpoints/checkpoint_ep5_step394.pt' \
-    --log_interval=10 --save_interval=1000 \
-    --batch_size=16 --lr=5e-4  \
+    --batch_size=2 --lr=1e-4  \
     --d_model 1024 --encoder_layers 12 --decoder_layers 12 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
     --encoder_ffn_dim 1024 --decoder_ffn_dim 1024 \
