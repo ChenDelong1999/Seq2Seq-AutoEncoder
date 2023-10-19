@@ -2,7 +2,7 @@ import argparse
 import os
 import tqdm
 import numpy as np
-
+import time
 import torch
 import torch.multiprocessing as mp
 import torchvision.transforms as transforms
@@ -15,13 +15,11 @@ from torch.distributed import init_process_group, destroy_process_group, barrier
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
-import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
 
-from data import SeqImgClsDataset, decode_image_from_data
+from data import SeqImgClsDataset
 from model import Seq2SeqAutoEncoderConfig, Seq2SeqAutoEncoderModel
-from utils import get_params_count_summary
-
+from utils import get_params_count_summary, save_hf_pretrained_model
+from evaluate import evaluate
 
 def ddp_setup(rank: int, world_size: int):
   os.environ["MASTER_ADDR"] = "localhost"
@@ -34,6 +32,7 @@ def train(model, dataloader, test_loader, optimizer, scheduler, device, writer, 
 
     model.train()
     step = epoch * len(dataloader)
+    start_time = time.time()
     for i, (data, _) in enumerate(dataloader):
         data = data.to(device)
         optimizer.zero_grad()
@@ -46,72 +45,27 @@ def train(model, dataloader, test_loader, optimizer, scheduler, device, writer, 
             writer.add_scalar('train/lr', scheduler.get_lr()[0], step)
 
         if i % args.log_interval == 0 and args.rank == 0:
-            print(f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)}, Global Step {step}\tLoss: {loss.item():.7f}, LR: {scheduler.get_lr()[0]:.7f}')
+            step_time = (time.time() - start_time) / args.log_interval
+            start_time = time.time()
+            writer.add_scalar('train/step_time', step_time, step)
+            print(f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)} ({int(i/len(dataloader)*100)}%), Global Step {step},\tLoss: {loss.item():.7f}, LR: {scheduler.get_lr()[0]:.7f},\tStep Time: {step_time:.3f}s')
 
         scheduler.step()
         step += 1
 
         if step!=0 and step % args.save_interval == 0 and args.rank == 0:
-            checkpoint_path = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i}.pt')
-            torch.save(model.state_dict(), checkpoint_path)
-            print(f'Saved checkpoint: {checkpoint_path}')
+            # checkpoint_path = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i}.pt')
+            # torch.save(model.state_dict(), checkpoint_path)
             
+            checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i}')
+            save_hf_pretrained_model(model, checkpoint_dir)
+            print(f'Saved checkpoint: {checkpoint_dir}')
+            
+        if step!=0 and step % args.eval_interval == 0 and args.rank == 0:
             print('Start evaluations')
             test_mse = evaluate(model, test_loader, device, writer, step, args)
             writer.add_scalar('train/test_generation_mse', test_mse, step)
             print(f'Test Generation MSE: {test_mse:.7f}')
-
-
-def evaluate(model, dataloader, device, writer, step, args):
-
-    model.eval()
-    mse_sum = 0
-
-    dataset = dataloader.dataset
-    with torch.no_grad():
-
-        print('Starting extraction of latent representations and T-SNE')
-        latents = []
-        labels = []  
-        for i in tqdm.tqdm(range(args.n_tsne_samples)):
-            data, label = dataset[i]
-            data = data.to(device).unsqueeze(0)
-            latent = model.module.encode(data).flatten().cpu().numpy()
-            latents.append(latent)
-            labels.append(label['class'])
-
-        latents = np.array(latents)
-        labels = np.array(labels)
-
-        tsne = TSNE(n_components=2, random_state=42)
-        print('Running TSNE...') # this may take a while
-        latents_tsne = tsne.fit_transform(latents)
-
-        fig, ax = plt.subplots(1, 1)
-        ax.scatter(latents_tsne[:, 0], latents_tsne[:, 1], c=labels, cmap='tab10', s=10, alpha=0.5)
-        writer.add_figure(f'tsne/tsne', fig, step)
-
-
-        print('Runing conditional auto-regressive generation')
-        for i in tqdm.tqdm(range(args.n_generation)):
-            data, label = dataset[i]
-            data = data.to(device).unsqueeze(0)
-
-            latents = model.module.encode(data)
-            reconstructed = model.module.generate(latents)
-
-            original_image, _ = decode_image_from_data(data.squeeze(0).cpu(), label['width'], label['height'], dataset.num_queries)
-            reconstructed_image, _ = decode_image_from_data(reconstructed.squeeze(0).cpu(), label['width'], label['height'], dataset.num_queries)
-
-            # log image pairs to tensorboard
-            fig, ax = plt.subplots(1, 2)
-            ax[0].imshow(original_image)
-            ax[1].imshow(reconstructed_image)
-            writer.add_figure(f'generation/image_pair_{i}', fig, step)
-            
-            mse_sum += ((data - reconstructed) ** 2).mean().item()
-
-    return mse_sum / len(dataset)
 
 
 def main(rank, world_size, args):
@@ -195,15 +149,20 @@ def main(rank, world_size, args):
 
     device = torch.device('cuda')
 
-    model = Seq2SeqAutoEncoderModel(config).to(device)
-    model = DDP(model, device_ids=[rank], find_unused_parameters=False)
-
     if args.pretrained is not None:
-        message = model.load_state_dict(torch.load(args.pretrained, map_location=device), strict=False)
-        print(f'Loaded pretrained weights from {args.pretrained}: {message}')
+        # message = model.load_state_dict(torch.load(args.pretrained, map_location=device), strict=False)
+        # print(f'Loaded pretrained weights from {args.pretrained}: {message}')
+        model = Seq2SeqAutoEncoderModel.from_pretrained(args.pretrained)
+    else:
+        model = Seq2SeqAutoEncoderModel(config)
+
+    model = DDP(model.to(device), device_ids=[rank], find_unused_parameters=False)
+
 
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
-    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs * len(train_dataloader))
+    # scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs * len(train_dataloader))
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(train_dataloader), epochs=args.epochs, pct_start=0.05)
+
 
     # Set up TensorBoard logging
     if args.rank == 0:
@@ -230,11 +189,6 @@ def main(rank, world_size, args):
         for epoch in range(args.epochs):
             train_dataloader.sampler.set_epoch(epoch)
             train(model, train_dataloader, test_dataloader, optimizer, scheduler, device, writer, epoch, args)
-        
-        if args.rank == 0:
-            checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i}')
-            model.module.save_pretrained(checkpoint_dir)
-            print(f'Saved huggingface model: {checkpoint_dir}')
 
     elif args.rank == 0:
         test_mse = evaluate(model, test_dataloader, device, writer, step=0, args=args)
@@ -271,12 +225,13 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train')
     parser.add_argument('--log_interval', type=int, default=100, help='number of steps between each logging')
     parser.add_argument('--save_interval', type=int, default=1000, help='number of epochs between each checkpoint saving')
+    parser.add_argument('--eval_interval', type=int, default=1000, help='number of epochs between each checkpoint saving')
     parser.add_argument('--pretrained', type=str, default=None, help='path to checkpoint')
 
     # Evaluation parameters
     parser.add_argument('--eval_only', action='store_true', help='evaluate the model on the test set without training')
     parser.add_argument('--n_generation', type=int, default=5, help='number of generations to run during evaluation')
-    parser.add_argument('--n_tsne_samples', type=int, default=5000, help='number of samples to run T-SNE on during evaluation')
+    parser.add_argument('--n_tsne_samples', type=int, default=2000, help='number of samples to run T-SNE on during evaluation')
 
     args = parser.parse_args()
 
@@ -287,11 +242,21 @@ if __name__ == '__main__':
 """
 
 CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 python main.py \
+    --log_interval=10 --eval_interval 500 --save_interval=2000 \
+    --batch_size=16 --lr=5e-4  \
+    --d_model 1024 --encoder_layers 12 --decoder_layers 12 \
+    --encoder_attention_heads 8 --decoder_attention_heads 8 \
+    --encoder_ffn_dim 1024 --decoder_ffn_dim 1024 \
+    --num_queries 64 --d_latent 1024
+    
+
+CUDA_VISIBLE_DEVICES=1 python main.py --eval_only\
+    --pretrained '/cpfs/user/chendelong/Seq2Seq-AutoEncoder/runs/Oct19_17-03-57_host19-eval_only=False/checkpoints/checkpoint_ep5_step394.pt' \
     --log_interval=10 --save_interval=1000 \
     --batch_size=16 --lr=5e-4  \
     --d_model 1024 --encoder_layers 12 --decoder_layers 12 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
-    --encoder_ffn_dim 4096 --decoder_ffn_dim 4096 \
+    --encoder_ffn_dim 1024 --decoder_ffn_dim 1024 \
     --num_queries 64 --d_latent 1024
     
 """
