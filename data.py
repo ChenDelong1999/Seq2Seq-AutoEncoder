@@ -103,6 +103,7 @@ def decode_image_from_data(data, width, height, num_queries):
     data = data[:-1, :]
 
     # remove the added channel (`\n`)
+    return_channel = data[-1, :]
     data = data[:-1, :]
 
     
@@ -122,7 +123,7 @@ def decode_image_from_data(data, width, height, num_queries):
     # convert to PIL image
     image = transforms.ToPILImage()(data)
 
-    return image, is_data
+    return image, is_data, return_channel
 
 
 if __name__ == '__main__':
