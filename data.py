@@ -117,16 +117,6 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
             'width': width,
             'height': height,
         }
-        
-        # data = torch.ones_like(data)
-
-        # if random.random() < 0.5:
-        #     for i in range(data.shape[0]):
-        #         data[i, :] = i/data.shape[0]
-
-        # if random.random() < 0.5:
-        #     for i in range(data.shape[1]):
-        #         data[:, i] *= (i+1)/data.shape[1]
 
         return data, label_dict
 

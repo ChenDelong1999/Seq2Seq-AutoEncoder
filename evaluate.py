@@ -1,7 +1,7 @@
 import tqdm
 import numpy as np
 import torch
-
+import random
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
@@ -17,7 +17,7 @@ def evaluate(model, dataloader, device, writer, step, args):
 
         print('Runing conditional auto-regressive generation')
         for i in tqdm.tqdm(range(args.n_generation)):
-            data, label = dataset[i]
+            data, label = dataset[random.randint(0, len(dataset)-1)]
             data = data.to(device).unsqueeze(0)
 
             latents = model.module.encode(data)
@@ -28,7 +28,7 @@ def evaluate(model, dataloader, device, writer, step, args):
 
             # plot return_channel lines
             fig, ax = plt.subplots(1, 1)
-            fig.set_size_inches(10, 3)
+            fig.set_size_inches(15, 3)
             ax.plot(original_return_channel, label='original')
             ax.plot(reconstructed_return_channel, label='reconstructed')
             ax.legend()
@@ -37,7 +37,7 @@ def evaluate(model, dataloader, device, writer, step, args):
 
             # plot is_data lines
             fig, ax = plt.subplots(1, 1)
-            fig.set_size_inches(10, 3)
+            fig.set_size_inches(15, 3)
             ax.plot(original_is_data, label='original')
             ax.plot(reconstructed_is_data, label='reconstructed')
             ax.legend()

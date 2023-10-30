@@ -52,11 +52,8 @@ def train(model, dataloader, test_loader, optimizer, scheduler, device, writer, 
         scheduler.step()
         step += 1
 
-        if step!=0 and step % args.save_interval == 0 and args.rank == 0:
-            # checkpoint_path = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i}.pt')
-            # torch.save(model.state_dict(), checkpoint_path)
-            
-            checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i}')
+        if step!=0 and step % args.save_interval == 0 and args.rank == 0:   
+            checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i+1}')
             save_hf_pretrained_model(model, checkpoint_dir)
             print(f'Saved checkpoint: {checkpoint_dir}')
             
@@ -222,13 +219,13 @@ if __name__ == '__main__':
 
 """
 
-CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 python main.py \
+CUDA_VISIBLE_DEVICES=1,2,3,4,5,6,7 python main.py \
     --dataset stl10 \
-    --log_interval=10 --eval_interval 500 --save_interval=2000 \
-    --batch_size=2 --lr=1e-4  \
-    --d_model 1024 --encoder_layers 12 --decoder_layers 12 \
+    --log_interval=100 --eval_interval 2500 --save_interval=10000 \
+    --batch_size=3 --lr=1e-5  --n_generation=1 \
+    --d_model 1024 --encoder_layers 12 --decoder_layers 4 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
     --encoder_ffn_dim 1024 --decoder_ffn_dim 1024 \
-    --num_queries 64 --d_latent 1024
+    --num_queries 64 --d_latent 2048
     
 """
