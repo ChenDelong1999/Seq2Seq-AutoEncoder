@@ -1,5 +1,6 @@
 import argparse
 import os
+import json
 import tqdm
 import numpy as np
 import time
@@ -13,6 +14,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import destroy_process_group, barrier
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
+from torch.cuda.amp import autocast, GradScaler
 device = torch.device('cuda')
 
 
@@ -28,27 +30,32 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
     step = epoch * len(dataloader)
     start_time = time.time()
     start_time_epoch = start_time
-    print(f'Starting epoch {epoch+1}/{args.epochs}')
+    scaler = GradScaler()
+
     for i, (data, _) in enumerate(dataloader):
         data = data.to(device)
 
-        if step==0:
-            print(f'Input data: {data.shape}\n{data}')
+        with autocast():
+            loss =  model(data)['loss']
+            loss = loss / args.gradient_accumulation_steps
+            scaler.scale(loss).backward()
 
-        optimizer.zero_grad()
-        loss =  model(data)['loss']
-        loss.backward()
+        if (i+1) % args.gradient_accumulation_steps == 0:
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
 
-        optimizer.step()
         if args.rank == 0:
-            writer.add_scalar('train/loss', loss.item(), step)
+            writer.add_scalar('train/loss', loss.item() * args.gradient_accumulation_steps, step)
             writer.add_scalar('train/lr', scheduler.get_lr()[0], step)
+            if step==0:
+                print(f'Input data: {data.shape}\n{data}')
 
         if i % args.log_interval == 0 and args.rank == 0:
             step_time = (time.time() - start_time) / args.log_interval
             start_time = time.time()
             writer.add_scalar('train/step_time', step_time, step)
-            print(f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)} ({int(i/len(dataloader)*100)}%), Global Step {step},\tLoss: {loss.item():.7f}, LR: {scheduler.get_lr()[0]:.7f},\tStep Time: {step_time:.3f}s')
+            print(f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)} ({int(i/len(dataloader)*100)}%), Global Step {step},\tLoss: {loss.item() * args.gradient_accumulation_steps:.7f}, LR: {scheduler.get_lr()[0]:.7f},\tStep Time: {step_time:.3f}s')
 
         scheduler.step()
         step += 1
@@ -66,7 +73,8 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
                 print(f'\t{name}: {value}')
             model.train()
 
-    print(f'Epoch {epoch+1}/{args.epochs} finished in {(time.time()-start_time_epoch)/60:.1f}min')
+    if args.rank == 0:
+        print(f'Epoch {epoch+1}/{args.epochs} finished in {(time.time()-start_time_epoch)/60:.1f}min')
 
 def main(rank, world_size, args):
 
@@ -93,7 +101,7 @@ def main(rank, world_size, args):
         train_dataset, 
         batch_size= args.batch_size,
         shuffle=False, 
-        num_workers=8,
+        num_workers=args.num_workers,
         sampler=DistributedSampler(train_dataset, shuffle=True)
         )
 
@@ -129,7 +137,6 @@ def main(rank, world_size, args):
         model = Seq2SeqAutoEncoderModel(config)
 
     model = DDP(model.to(device), device_ids=[rank], find_unused_parameters=False)
-
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(train_dataloader), epochs=args.epochs, pct_start=0.05)
 
@@ -147,13 +154,14 @@ def main(rank, world_size, args):
         print('='*64)
 
         total_params = round(sum(p.numel() for p in model.parameters()) / 1e9 ,2)
-        comment = f'-{args.dataset}-[model={total_params}B]-[lr{args.lr}-bs{args.batch_size}-{world_size}gpu]'
+        comment = f'-{args.dataset}-[model={total_params}B-{args.num_queries}queries]-[lr{args.lr}-bs{args.batch_size}x{args.gradient_accumulation_steps}step-{world_size}gpu]'
         if args.eval_only:
             comment += '-eval_only'
         writer = SummaryWriter(comment=comment)
         print(f'Writing logs to {writer.log_dir}')
         args.checkpoint_dir = os.path.join(writer.log_dir, 'checkpoints')
         os.makedirs(args.checkpoint_dir, exist_ok=True)
+        json.dump(vars(args), open(os.path.join(args.checkpoint_dir, 'args.json'), 'w'), indent=4)
     else:
         writer = None
 
@@ -175,11 +183,13 @@ if __name__ == '__main__':
     # Define command line arguments
     parser = argparse.ArgumentParser(description='Seq2Seq-AutoEncoder')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size')
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=4, help='gradient accumulation')
 
     # Data parameters
     parser.add_argument('--dataset', type=str, default='cifar10') # choices=['cifar10', 'cifar100', 'stl10']
     parser.add_argument('--img_size', type=int, default=32, help='maximum image size')
     parser.add_argument('--data_dir', type=str, default='data/cache', help='path to dataset directory')
+    parser.add_argument('--num_workers', type=int, default=2, help='maximum image size')
 
     # Model parameters
     parser.add_argument('--d_model', type=int, default=512, help='dimensionality of the model')
@@ -221,5 +231,16 @@ CUDA_VISIBLE_DEVICES=2 python main.py \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
     --encoder_ffn_dim 1024 --decoder_ffn_dim 1024 \
     --num_queries 64 --d_latent 1024
-    
+
+
+# on A100 80G GPU
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
+    --dataset stl10 --img_size 64 \
+    --eval_interval 1000 --save_interval=10000 \
+    --batch_size=1 --gradient_accumulation_steps 8 --lr=1e-4  --n_generation=1 \
+    --d_model 1024 --encoder_layers 24 --decoder_layers 24 \
+    --encoder_attention_heads 8 --decoder_attention_heads 8 \
+    --encoder_ffn_dim 4096 --decoder_ffn_dim 4096 \
+    --num_queries 16 --d_latent 1024
+
 """

@@ -16,7 +16,7 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         self.num_queries = num_queries
         self.model_seq_length = self.data_seq_length + self.num_queries + 1
 
-        self.postional_embedding = self.get_positional_embedding()
+        # self.postional_embedding = self.get_positional_embedding()
 
         self.num_channels = 3 + 1 + 1
         self.channel_info = {
@@ -26,20 +26,25 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         }
 
 
-    def get_positional_embedding(self):
-        x = torch.arange(self.img_size).float()
-        y = torch.arange(self.img_size).float()
-        x, y = torch.meshgrid(x, y)
+    # def get_positional_embedding(self):
+    #     x = torch.arange(self.img_size).float()
+    #     y = torch.arange(self.img_size).float()
+    #     x, y = torch.meshgrid(x, y)
 
-        pos_emb = torch.sin(2 * math.pi * x) * torch.sin(2 * math.pi * y)
-        max = pos_emb.max()
-        min = pos_emb.min()
-        return (pos_emb - min) / (max - min)
+    #     pos_emb = torch.sin(2 * math.pi * x) * torch.sin(2 * math.pi * y)
+    #     max = pos_emb.max()
+    #     min = pos_emb.min()
+    #     return (pos_emb - min) / (max - min)
     
+    # def add_positional_embedding(self, image):
+    #     pos_emb = self.postional_embedding[:image.shape[1], :image.shape[2]]
+    #     image = torch.cat((image, pos_emb.unsqueeze(0)), dim=0)
+    #     return image
 
     def add_positional_embedding(self, image):
-        pos_emb = self.postional_embedding[:image.shape[1], :image.shape[2]]
-        image = torch.cat((image, pos_emb.unsqueeze(0)), dim=0)
+        image = torch.cat((image, torch.zeros((1, image.shape[1], image.shape[2]))), dim=0)
+        # the right most column of the added channle is all ones
+        image[-1, :, -1] = 1
         return image
 
 
@@ -70,6 +75,8 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         
         width = np.random.randint(self.img_size/2, self.img_size)
         height = np.random.randint(self.img_size/2, self.img_size)
+        # width, height = self.img_size, self.img_size
+
         image = transforms.Resize((width, height), antialias=True)(image)
         # print(f'\nResized image: {image.shape}\n{image}')
 
@@ -101,8 +108,9 @@ def decode_image_from_data(data, width, height, num_queries):
     data = data[:-1, :]
 
     # remove the added positional_embedding channel
-    positional_embedding = data[-1, 1:width*height+1]
-    positional_embedding = positional_embedding.reshape((width, height))
+    # positional_embedding = data[-1, 1:width*height+1]
+    # positional_embedding = positional_embedding.reshape((width, height))
+    positional_embedding = data[-1, :]
     data = data[:-1, :]
 
     # remove the first all zero <s> column 

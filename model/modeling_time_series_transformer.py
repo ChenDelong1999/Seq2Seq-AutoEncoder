@@ -888,9 +888,9 @@ class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
         self.encoder = TimeSeriesTransformerEncoder(config)
         self.decoder = TimeSeriesTransformerDecoder(config)
 
-        self.encoder_query_projection = torch.nn.Linear(config.d_model*config.num_queries, config.d_latent)
-        self.decoder_query_projection = torch.nn.Linear(config.d_latent, config.d_model*config.num_queries)
-
+        self.encoder_bottleneck_projector = torch.nn.Linear(config.d_model*config.num_queries, config.d_latent)
+        self.decoder_bottleneck_projector = torch.nn.Linear(config.d_latent, config.d_model*config.num_queries)
+        
         self.output_head = torch.nn.Sequential(
             torch.nn.Linear(config.d_model, config.input_size),
             torch.nn.Sigmoid()
@@ -911,11 +911,12 @@ class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
         last_hidden_state = self.encoder(inputs_embeds=past_values)['last_hidden_state'] # [batch_size, seq_len, d_model]
         latents = last_hidden_state[:, -self.config.num_queries:, :]
         latents = latents.reshape(latents.shape[0], -1)
-        latents = self.encoder_query_projection(latents)
+        latents = self.encoder_bottleneck_projector(latents)
         return latents
     
     def decode(self, latents, future_values):
-        latents = self.decoder_query_projection(latents)
+
+        latents = self.decoder_bottleneck_projector(latents)
         latents = latents.reshape(latents.shape[0], self.config.num_queries, self.config.d_model)
         decoder_outputs = self.decoder(inputs_embeds=future_values, encoder_hidden_states=latents)
         return decoder_outputs

@@ -25,11 +25,19 @@ def evaluate(model, dataset, device, writer, step, args):
             original_image, original_is_data, original_positional_embedding = decode_image_from_data(data.squeeze(0).cpu(), image_info['width'], image_info['height'], dataset.num_queries)
             reconstructed_image, reconstructed_is_data, reconstructed_positional_embedding = decode_image_from_data(reconstructed.squeeze(0).cpu(), image_info['width'], image_info['height'], dataset.num_queries)
 
-            # plot original and reconstructed positional_embedding heatmap
-            fig, ax = plt.subplots(1, 2)
-            fig.set_size_inches(10,5)
-            ax[0].imshow(original_positional_embedding)
-            ax[1].imshow(reconstructed_positional_embedding)
+            # # plot original and reconstructed positional_embedding heatmap
+            # fig, ax = plt.subplots(1, 2)
+            # fig.set_size_inches(10,5)
+            # ax[0].imshow(original_positional_embedding)
+            # ax[1].imshow(reconstructed_positional_embedding)
+            # writer.add_figure(f'special_tokens/positional_embedding_{i}', fig, step)
+
+            # plot original and reconstructed positional_embedding lines
+            fig, ax = plt.subplots(1, 1)
+            fig.set_size_inches(15, 3)
+            ax.plot(original_positional_embedding, label='original')
+            ax.plot(reconstructed_positional_embedding, label='reconstructed')
+            ax.legend()
             writer.add_figure(f'special_tokens/positional_embedding_{i}', fig, step)
             
             # plot is_data lines
