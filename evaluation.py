@@ -5,36 +5,33 @@ import random
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
-from data import decode_image_from_data
+from data.image_classification_dataset import decode_image_from_data
 
-def evaluate(model, dataloader, device, writer, step, args):
+def evaluate(model, dataset, device, writer, step, args):
 
     model.eval()
     mse_sum = 0
 
-    dataset = dataloader.dataset
     with torch.no_grad():
 
         print('Runing conditional auto-regressive generation')
         for i in tqdm.tqdm(range(args.n_generation)):
-            data, label = dataset[random.randint(0, len(dataset)-1)]
+            data, image_info = dataset[random.randint(0, len(dataset)-1)]
             data = data.to(device).unsqueeze(0)
 
             latents = model.module.encode(data)
             reconstructed = model.module.generate(latents)
 
-            original_image, original_is_data, original_return_channel = decode_image_from_data(data.squeeze(0).cpu(), label['width'], label['height'], dataset.num_queries)
-            reconstructed_image, reconstructed_is_data, reconstructed_return_channel = decode_image_from_data(reconstructed.squeeze(0).cpu(), label['width'], label['height'], dataset.num_queries)
+            original_image, original_is_data, original_positional_embedding = decode_image_from_data(data.squeeze(0).cpu(), image_info['width'], image_info['height'], dataset.num_queries)
+            reconstructed_image, reconstructed_is_data, reconstructed_positional_embedding = decode_image_from_data(reconstructed.squeeze(0).cpu(), image_info['width'], image_info['height'], dataset.num_queries)
 
-            # plot return_channel lines
-            fig, ax = plt.subplots(1, 1)
-            fig.set_size_inches(15, 3)
-            ax.plot(original_return_channel, label='original')
-            ax.plot(reconstructed_return_channel, label='reconstructed')
-            ax.legend()
-            # reshape the figure to wider and shorter
-            writer.add_figure(f'special_tokens/return_channel_{i}', fig, step)
-
+            # plot original and reconstructed positional_embedding heatmap
+            fig, ax = plt.subplots(1, 2)
+            fig.set_size_inches(10,5)
+            ax[0].imshow(original_positional_embedding)
+            ax[1].imshow(reconstructed_positional_embedding)
+            writer.add_figure(f'special_tokens/positional_embedding_{i}', fig, step)
+            
             # plot is_data lines
             fig, ax = plt.subplots(1, 1)
             fig.set_size_inches(15, 3)
@@ -55,11 +52,11 @@ def evaluate(model, dataloader, device, writer, step, args):
         latents = []
         labels = []  
         for i in tqdm.tqdm(range(args.n_tsne_samples)):
-            data, label = dataset[i]
+            data, image_info = dataset[i]
             data = data.to(device).unsqueeze(0)
             latent = model.module.encode(data).flatten().cpu().numpy()
             latents.append(latent)
-            labels.append(label['class'])
+            labels.append(image_info['label'])
 
         latents = np.array(latents)
         labels = np.array(labels)
@@ -72,5 +69,9 @@ def evaluate(model, dataloader, device, writer, step, args):
         ax.scatter(latents_tsne[:, 0], latents_tsne[:, 1], c=labels, cmap='tab10', s=10, alpha=0.5)
         writer.add_figure(f'tsne/tsne', fig, step)
 
-    return mse_sum / len(dataset)
+        reconstruction_mse = mse_sum / args.n_generation
+
+    return {
+        'reconstruction_mse': reconstruction_mse
+    }
 
