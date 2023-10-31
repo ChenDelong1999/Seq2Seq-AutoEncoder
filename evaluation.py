@@ -22,8 +22,20 @@ def evaluate(model, dataset, device, writer, step, args):
             latents = model.module.encode(data)
             reconstructed = model.module.generate(latents)
 
-            original_image, original_is_data, original_positional_embedding = decode_image_from_data(data.squeeze(0).cpu(), image_info['width'], image_info['height'], dataset.num_queries)
-            reconstructed_image, reconstructed_is_data, reconstructed_positional_embedding = decode_image_from_data(reconstructed.squeeze(0).cpu(), image_info['width'], image_info['height'], dataset.num_queries)
+            original_image, original_is_data, original_positional_embedding = decode_image_from_data(
+                data.squeeze(0).cpu(), 
+                image_info['width'], 
+                image_info['height'], 
+                dataset.num_queries, 
+                img_channels=dataset.img_channels
+                )
+            reconstructed_image, reconstructed_is_data, reconstructed_positional_embedding = decode_image_from_data(
+                reconstructed.squeeze(0).cpu(), 
+                image_info['width'], 
+                image_info['height'], 
+                dataset.num_queries, 
+                img_channels=dataset.img_channels
+                )
 
             # # plot original and reconstructed positional_embedding heatmap
             # fig, ax = plt.subplots(1, 2)

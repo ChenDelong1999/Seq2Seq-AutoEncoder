@@ -933,15 +933,18 @@ class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
         # print(f'decoder_outputs.last_hidden_state.shape: {decoder_outputs.last_hidden_state.shape}')
 
         prediction = self.output_head(decoder_outputs[0])
+
+        return prediction
+    
         # prediction_loss = self.loss(prediction, data)
 
         # loss should be shifted to the right
-        prediction_loss = self.loss(prediction[:, :-1, :], data[:, 1:, :])
+        # prediction_loss = self.loss(prediction[:, :-1, :], data[:, 1:, :])
 
-        return Seq2SeqTSPredictionOutput(
-            loss=prediction_loss,
-            encoder_last_hidden_state=encoder_latents,
-        )
+        # return Seq2SeqTSPredictionOutput(
+        #     loss=prediction_loss,
+        #     encoder_last_hidden_state=encoder_latents,
+        # )
 
     @torch.no_grad()
     def generate(

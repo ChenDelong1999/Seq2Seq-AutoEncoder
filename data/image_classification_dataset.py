@@ -9,22 +9,29 @@ import torchvision.transforms as transforms
 
 
 class SeqImgClsDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, img_size=32, num_queries=64):
+    def __init__(self, dataset, img_size=32, img_channels=3, num_queries=64):
         self.dataset = dataset
         self.img_size = img_size
+        self.img_channels = img_channels
         self.data_seq_length = img_size * img_size
         self.num_queries = num_queries
         self.model_seq_length = self.data_seq_length + self.num_queries + 1
 
         # self.postional_embedding = self.get_positional_embedding()
 
-        self.num_channels = 3 + 1 + 1
-        self.channel_info = {
-            'RGB': [0,2],
-            'postional_embedding': 3,
-            'is_data': 4,
-        }
-
+        self.num_channels = self.img_channels + 1 + 1
+        if self.img_channels==3:
+            self.channel_info = {
+                'data': [0,2],
+                'postional_embedding': 3,
+                'is_data': 4,
+            }
+        elif self.img_channels==1:
+            self.channel_info = {
+                'data': 0,
+                'postional_embedding': 1,
+                'is_data': 2,
+            }
 
     # def get_positional_embedding(self):
     #     x = torch.arange(self.img_size).float()
@@ -98,7 +105,7 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         return len(self.dataset)
 
 
-def decode_image_from_data(data, width, height, num_queries):
+def decode_image_from_data(data, width, height, num_queries, img_channels=3):
     # reverse the `preprocess_to_sequence` function to get image
 
     data = data.T
@@ -123,7 +130,7 @@ def decode_image_from_data(data, width, height, num_queries):
     data = data[:, :width*height]
 
     # reshape the data into [channels, height, width]
-    data = data.reshape((3, width, height))
+    data = data.reshape((img_channels, width, height))
 
     # convert to PIL image
     image = transforms.ToPILImage()(data)

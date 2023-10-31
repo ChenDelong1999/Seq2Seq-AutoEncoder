@@ -22,7 +22,7 @@ from data.dataset import get_dataset
 from evaluation import evaluate
 from model import Seq2SeqAutoEncoderConfig, Seq2SeqAutoEncoderModel
 from utils import ddp_setup, get_params_count_summary, save_hf_pretrained_model
-
+from loss import seq2seq_autoencoder_loss
 
 def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer, epoch, args):
 
@@ -36,9 +36,12 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
         data = data.to(device)
 
         with autocast():
-            loss =  model(data)['loss']
-            loss = loss / args.gradient_accumulation_steps
-            scaler.scale(loss).backward()
+            # loss =  model(data)['loss']
+            prediction = model(data)
+            loss = seq2seq_autoencoder_loss(prediction, data, args.channel_info)
+            total_loss = sum(loss.values())
+            total_loss = total_loss / args.gradient_accumulation_steps
+            scaler.scale(total_loss).backward()
 
         if (i+1) % args.gradient_accumulation_steps == 0:
             scaler.step(optimizer)
@@ -46,7 +49,10 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
             optimizer.zero_grad()
 
         if args.rank == 0:
-            writer.add_scalar('train/loss', loss.item() * args.gradient_accumulation_steps, step)
+            writer.add_scalar('train/loss (total)', total_loss.item() * args.gradient_accumulation_steps, step)
+            for name, value in loss.items():
+                writer.add_scalar(f'train/loss ({name})', value.item(), step)
+
             writer.add_scalar('train/lr', scheduler.get_lr()[0], step)
             if step==0:
                 print(f'Input data: {data.shape}\n{data}')
@@ -55,7 +61,7 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
             step_time = (time.time() - start_time) / args.log_interval
             start_time = time.time()
             writer.add_scalar('train/step_time', step_time, step)
-            print(f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)} ({int(i/len(dataloader)*100)}%), Global Step {step},\tLoss: {loss.item() * args.gradient_accumulation_steps:.7f}, LR: {scheduler.get_lr()[0]:.7f},\tStep Time: {step_time:.3f}s')
+            print(f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)} ({int(i/len(dataloader)*100)}%), Global Step {step},\tLoss: {total_loss.item() * args.gradient_accumulation_steps:.7f}, LR: {scheduler.get_lr()[0]:.7f},\tStep Time: {step_time:.3f}s')
 
         scheduler.step()
         step += 1
@@ -222,15 +228,15 @@ if __name__ == '__main__':
     mp.spawn(main, args=(world_size, args, ), nprocs=world_size)
 
 """
-# on 3090ti GPU
-CUDA_VISIBLE_DEVICES=2 python main.py \
-    --dataset stl10 --img_size 32 \
-    --eval_interval 1000 --save_interval=10000 \
-    --batch_size=16 --lr=1e-5  --n_generation=1 \
-    --d_model 1024 --encoder_layers 4 --decoder_layers 4 \
+# on 3090ti GPU, MNIST
+CUDA_VISIBLE_DEVICES=1,2 python main.py \
+    --dataset mnist --img_size 28 \
+    --eval_interval 500 --save_interval=10000 \
+    --batch_size=32 --gradient_accumulation_steps 1 --lr=1e-5  --n_generation=1 \
+    --d_model 512 --encoder_layers 6 --decoder_layers 6 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
-    --encoder_ffn_dim 1024 --decoder_ffn_dim 1024 \
-    --num_queries 64 --d_latent 1024
+    --encoder_ffn_dim 512 --decoder_ffn_dim 512 \
+    --num_queries 16 --d_latent 128
 
 
 # on A100 80G GPU
