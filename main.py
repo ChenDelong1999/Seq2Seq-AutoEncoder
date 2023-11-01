@@ -242,7 +242,7 @@ CUDA_VISIBLE_DEVICES=1,2 python main.py \
 # on A100 80G GPU
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
     --dataset stl10 --img_size 64 \
-    --eval_interval 1000 --save_interval=10000 \
+    --eval_interval 10000 --save_interval=10000 \
     --batch_size=1 --gradient_accumulation_steps 8 --lr=1e-4  --n_generation=1 \
     --d_model 1024 --encoder_layers 24 --decoder_layers 24 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \

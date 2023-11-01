@@ -17,23 +17,23 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         self.num_queries = num_queries
         self.model_seq_length = self.data_seq_length + self.num_queries + 1
 
-        # self.postional_embedding = self.get_positional_embedding()
+        # self.postional_embedding = self.get_shape_encoding()
 
         self.num_channels = self.img_channels + 1 + 1
         if self.img_channels==3:
             self.channel_info = {
                 'data': [0,2],
-                'postional_embedding': 3,
+                'shape_encoding': 3,
                 'is_data': 4,
             }
         elif self.img_channels==1:
             self.channel_info = {
                 'data': 0,
-                'postional_embedding': 1,
+                'shape_encoding': 1,
                 'is_data': 2,
             }
 
-    # def get_positional_embedding(self):
+    # def get_shape_encoding(self):
     #     x = torch.arange(self.img_size).float()
     #     y = torch.arange(self.img_size).float()
     #     x, y = torch.meshgrid(x, y)
@@ -43,12 +43,12 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
     #     min = pos_emb.min()
     #     return (pos_emb - min) / (max - min)
     
-    # def add_positional_embedding(self, image):
+    # def add_shape_encoding(self, image):
     #     pos_emb = self.postional_embedding[:image.shape[1], :image.shape[2]]
     #     image = torch.cat((image, pos_emb.unsqueeze(0)), dim=0)
     #     return image
 
-    def add_positional_embedding(self, image):
+    def add_shape_encoding(self, image):
         image = torch.cat((image, torch.zeros((1, image.shape[1], image.shape[2]))), dim=0)
         # the right most column of the added channle is all ones
         image[-1, :, -1] = 1
@@ -87,7 +87,7 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         image = transforms.Resize((width, height), antialias=True)(image)
         # print(f'\nResized image: {image.shape}\n{image}')
 
-        image = self.add_positional_embedding(image)
+        image = self.add_shape_encoding(image)
         # print(f'\nAfter adding positional embedding: {image.shape}\n{image}')
 
         data = self.preprocess_to_sequence(image)
@@ -114,10 +114,10 @@ def decode_image_from_data(data, width, height, num_queries, img_channels=3):
     is_data = data[-1, :]
     data = data[:-1, :]
 
-    # remove the added positional_embedding channel
-    # positional_embedding = data[-1, 1:width*height+1]
-    # positional_embedding = positional_embedding.reshape((width, height))
-    positional_embedding = data[-1, :]
+    # remove the added shape_encoding channel
+    # shape_encoding = data[-1, 1:width*height+1]
+    # shape_encoding = shape_encoding.reshape((width, height))
+    shape_encoding = data[-1, :]
     data = data[:-1, :]
 
     # remove the first all zero <s> column 
@@ -135,7 +135,7 @@ def decode_image_from_data(data, width, height, num_queries, img_channels=3):
     # convert to PIL image
     image = transforms.ToPILImage()(data)
 
-    return image, is_data, positional_embedding
+    return image, is_data, shape_encoding
 
 
 if __name__ == '__main__':
@@ -154,7 +154,7 @@ if __name__ == '__main__':
         data, image_info = train_dataset[random.randint(0, len(train_dataset)-1)]
         print(f'\nData shape: {data.shape}\n{data}')
 
-        image, is_data, positional_embedding = decode_image_from_data(data, image_info['width'], image_info['height'], train_dataset.num_queries)
+        image, is_data, shape_encoding = decode_image_from_data(data, image_info['width'], image_info['height'], train_dataset.num_queries)
 
         # save reconstructed image
         image.save(f'reconstructed_{i}.png')
