@@ -167,7 +167,7 @@ def main(rank, world_size, args):
         print(f'Writing logs to {writer.log_dir}')
         args.checkpoint_dir = os.path.join(writer.log_dir, 'checkpoints')
         os.makedirs(args.checkpoint_dir, exist_ok=True)
-        json.dump(vars(args), open(os.path.join(args.checkpoint_dir, 'args.json'), 'w'), indent=4)
+        json.dump(vars(args), open(os.path.join(writer.log_dir, 'args.json'), 'w'), indent=4)
     else:
         writer = None
 
@@ -231,7 +231,7 @@ if __name__ == '__main__':
 # on 3090ti GPU, MNIST
 CUDA_VISIBLE_DEVICES=1,2 python main.py \
     --dataset mnist --img_size 28 \
-    --eval_interval 500 --save_interval=10000 \
+    --eval_interval 1000 --save_interval=10000 \
     --batch_size=32 --gradient_accumulation_steps 1 --lr=1e-5  --n_generation=1 \
     --d_model 512 --encoder_layers 6 --decoder_layers 6 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
