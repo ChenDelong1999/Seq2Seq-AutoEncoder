@@ -511,10 +511,10 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
         self.learnable_positional_embedding = nn.Embedding(
             config.context_length, config.d_model#, padding_idx=config.context_length
         )
-        sin_positional_embedding = TimeSeriesSinusoidalPositionalEmbedding(
-            config.context_length + config.prediction_length, config.d_model
-        )
-        self.learnable_positional_embedding.weight = nn.Parameter(sin_positional_embedding(self.learnable_positional_embedding.weight.unsqueeze(0).size()))
+        # sin_positional_embedding = TimeSeriesSinusoidalPositionalEmbedding(
+        #     config.context_length + config.prediction_length, config.d_model
+        # )
+        # self.learnable_positional_embedding.weight = nn.Parameter(sin_positional_embedding(self.learnable_positional_embedding.weight.unsqueeze(0).size()))
 
         self.layers = nn.ModuleList([TimeSeriesTransformerEncoderLayer(config) for _ in range(config.encoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
@@ -662,11 +662,12 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
         
         self.learnable_positional_embedding = nn.Embedding(
             config.context_length, config.d_model#, padding_idx=config.context_length
-        )
-        sin_positional_embedding = TimeSeriesSinusoidalPositionalEmbedding(
-            config.context_length + config.prediction_length, config.d_model
-        )
-        self.learnable_positional_embedding.weight = nn.Parameter(sin_positional_embedding(self.learnable_positional_embedding.weight.unsqueeze(0).size()))
+        )        
+
+        # sin_positional_embedding = TimeSeriesSinusoidalPositionalEmbedding(
+        #     config.context_length + config.prediction_length, config.d_model
+        # )
+        # self.learnable_positional_embedding.weight = nn.Parameter(sin_positional_embedding(self.learnable_positional_embedding.weight.unsqueeze(0).size()))
 
         self.layers = nn.ModuleList([TimeSeriesTransformerDecoderLayer(config) for _ in range(config.decoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
