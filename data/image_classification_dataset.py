@@ -78,6 +78,7 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         image, label = self.dataset[index]
+        image = torch.clamp(image, 1e-6, 1-1e-6)
         # print(f'\nOriginal image: {image.shape}\n{image}')
         
         width = np.random.randint(self.img_size/2, self.img_size)

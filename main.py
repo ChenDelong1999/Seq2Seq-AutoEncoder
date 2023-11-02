@@ -44,9 +44,13 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
             scaler.scale(total_loss).backward()
 
         if (i+1) % args.gradient_accumulation_steps == 0:
+            scaler.unscale_(optimizer)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.clip_grad_norm)
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
+            if args.rank == 0:
+                writer.add_scalar('train/grad_norm', grad_norm, step)
 
         if args.rank == 0:
             writer.add_scalar('train/loss (total)', total_loss.item() * args.gradient_accumulation_steps, step)
@@ -67,7 +71,7 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
         step += 1
 
         if step!=0 and step % args.save_interval == 0 and args.rank == 0:   
-            checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{i+1}')
+            checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{int((step+1)/1000)}k')
             save_hf_pretrained_model(model, checkpoint_dir)
             print(f'Saved checkpoint: {checkpoint_dir}')
             
@@ -139,6 +143,8 @@ def main(rank, world_size, args):
 
     if args.pretrained is not None:
         model = Seq2SeqAutoEncoderModel.from_pretrained(args.pretrained)
+        if args.rank == 0:
+            print(f'Loaded pretrained model from {args.pretrained}')
     else:
         model = Seq2SeqAutoEncoderModel(config)
 
@@ -211,6 +217,7 @@ if __name__ == '__main__':
 
     # Training parameters
     parser.add_argument('--lr', type=float, default=5e-4, help='learning rate')
+    parser.add_argument('--clip_grad_norm', type=float, default=1.0, help='gradient clipping norm')
     parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train')
     parser.add_argument('--log_interval', type=int, default=100, help='number of steps between each logging')
     parser.add_argument('--save_interval', type=int, default=1000, help='number of epochs between each checkpoint saving')
@@ -231,8 +238,8 @@ if __name__ == '__main__':
 # on 3090ti GPU, MNIST
 CUDA_VISIBLE_DEVICES=1,2 python main.py \
     --dataset mnist --img_size 28 \
-    --eval_interval 1000 --save_interval=10000 \
-    --batch_size=32 --gradient_accumulation_steps 1 --lr=1e-5  --n_generation=1 \
+    --eval_interval 500 --save_interval=10000 \
+    --batch_size=32 --gradient_accumulation_steps 1 --lr=5e-5  --n_generation=10 \
     --d_model 512 --encoder_layers 6 --decoder_layers 6 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
     --encoder_ffn_dim 512 --decoder_ffn_dim 512 \
@@ -243,7 +250,7 @@ CUDA_VISIBLE_DEVICES=1,2 python main.py \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
     --dataset stl10 --img_size 64 \
     --eval_interval 10000 --save_interval=10000 \
-    --batch_size=1 --gradient_accumulation_steps 8 --lr=1e-4  --n_generation=1 \
+    --batch_size=1 --gradient_accumulation_steps 8 --lr=5e-5  --n_generation=1 \
     --d_model 1024 --encoder_layers 24 --decoder_layers 24 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
     --encoder_ffn_dim 4096 --decoder_ffn_dim 4096 \
