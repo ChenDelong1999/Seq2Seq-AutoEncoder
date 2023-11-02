@@ -507,7 +507,7 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
             raise ValueError("The `prediction_length` config needs to be specified.")
 
         self.value_embedding = TimeSeriesValueEmbedding(feature_size=config.input_size, d_model=config.d_model)
-        self.learnable_positional_embedding = learnable_positional_embedding
+        self.learnable_positional_embedding = learnable_positional_embedding        
         self.layers = nn.ModuleList([TimeSeriesTransformerEncoderLayer(config) for _ in range(config.encoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
@@ -891,8 +891,10 @@ class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
         self.encoder = TimeSeriesTransformerEncoder(config, self.learnable_positional_embedding)
         self.decoder = TimeSeriesTransformerDecoder(config, self.learnable_positional_embedding)
 
-        self.encoder_bottleneck_projector = torch.nn.Linear(config.d_model*config.num_queries, config.d_latent)
-        self.decoder_bottleneck_projector = torch.nn.Linear(config.d_latent, config.d_model*config.num_queries)
+        self.bottleneck_projector = torch.nn.Linear(config.d_model*config.num_queries, config.d_latent, bias=False) 
+        # encoder_bottleneck_projector.weight (128, 8192) i.e. (d_latent, d_model*num_queries)
+
+        # self.decoder_bottleneck_projector = torch.nn.Linear(config.d_latent, config.d_model*config.num_queries)
         
         self.output_head = torch.nn.Sequential(
             torch.nn.Linear(config.d_model, config.input_size),
@@ -914,12 +916,16 @@ class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
         last_hidden_state = self.encoder(inputs_embeds=past_values)['last_hidden_state'] # [batch_size, seq_len, d_model]
         latents = last_hidden_state[:, -self.config.num_queries:, :]
         latents = latents.reshape(latents.shape[0], -1)
-        latents = self.encoder_bottleneck_projector(latents)
+        latents = self.bottleneck_projector(latents)
         return latents
     
     def decode(self, latents, future_values):
 
-        latents = self.decoder_bottleneck_projector(latents)
+        # latents = self.decoder_bottleneck_projector(latents)
+
+        # latents.shape = [batch_size, d_latent] 
+        latents = latents @ self.bottleneck_projector.weight # -> [batch_size, d_model*num_queries]
+
         latents = latents.reshape(latents.shape[0], self.config.num_queries, self.config.d_model)
         decoder_outputs = self.decoder(inputs_embeds=future_values, encoder_hidden_states=latents)
         return decoder_outputs
