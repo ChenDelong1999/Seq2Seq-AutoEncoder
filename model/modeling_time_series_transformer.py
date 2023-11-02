@@ -498,7 +498,7 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
         config: TimeSeriesTransformerConfig
     """
 
-    def __init__(self, config: Seq2SeqAutoEncoderConfig):
+    def __init__(self, config: Seq2SeqAutoEncoderConfig, learnable_positional_embedding):
         super().__init__(config)
 
         self.dropout = config.dropout
@@ -507,15 +507,7 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
             raise ValueError("The `prediction_length` config needs to be specified.")
 
         self.value_embedding = TimeSeriesValueEmbedding(feature_size=config.input_size, d_model=config.d_model)
-        
-        self.learnable_positional_embedding = nn.Embedding(
-            config.context_length, config.d_model#, padding_idx=config.context_length
-        )
-        # sin_positional_embedding = TimeSeriesSinusoidalPositionalEmbedding(
-        #     config.context_length + config.prediction_length, config.d_model
-        # )
-        # self.learnable_positional_embedding.weight = nn.Parameter(sin_positional_embedding(self.learnable_positional_embedding.weight.unsqueeze(0).size()))
-
+        self.learnable_positional_embedding = learnable_positional_embedding
         self.layers = nn.ModuleList([TimeSeriesTransformerEncoderLayer(config) for _ in range(config.encoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
@@ -651,7 +643,7 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
         config: TimeSeriesTransformerConfig
     """
 
-    def __init__(self, config: Seq2SeqAutoEncoderConfig):
+    def __init__(self, config: Seq2SeqAutoEncoderConfig, learnable_positional_embedding):
         super().__init__(config)
         self.dropout = config.dropout
         self.layerdrop = config.decoder_layerdrop
@@ -659,16 +651,7 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
             raise ValueError("The `prediction_length` config needs to be specified.")
 
         self.value_embedding = TimeSeriesValueEmbedding(feature_size=config.input_size, d_model=config.d_model)
-        
-        self.learnable_positional_embedding = nn.Embedding(
-            config.context_length, config.d_model#, padding_idx=config.context_length
-        )        
-
-        # sin_positional_embedding = TimeSeriesSinusoidalPositionalEmbedding(
-        #     config.context_length + config.prediction_length, config.d_model
-        # )
-        # self.learnable_positional_embedding.weight = nn.Parameter(sin_positional_embedding(self.learnable_positional_embedding.weight.unsqueeze(0).size()))
-
+        self.learnable_positional_embedding = learnable_positional_embedding
         self.layers = nn.ModuleList([TimeSeriesTransformerDecoderLayer(config) for _ in range(config.decoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
@@ -896,10 +879,17 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
 
 class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
     def __init__(self, config: Seq2SeqAutoEncoderConfig):
-        super().__init__(config)
+        super().__init__(config)        
+        
+        self.learnable_positional_embedding = nn.Embedding(config.context_length, config.d_model)
+        
+        sin_positional_embedding = TimeSeriesSinusoidalPositionalEmbedding(
+            config.context_length + config.prediction_length, config.d_model
+        )
+        self.learnable_positional_embedding.weight = nn.Parameter(sin_positional_embedding(self.learnable_positional_embedding.weight.unsqueeze(0).size()))
 
-        self.encoder = TimeSeriesTransformerEncoder(config)
-        self.decoder = TimeSeriesTransformerDecoder(config)
+        self.encoder = TimeSeriesTransformerEncoder(config, self.learnable_positional_embedding)
+        self.decoder = TimeSeriesTransformerDecoder(config, self.learnable_positional_embedding)
 
         self.encoder_bottleneck_projector = torch.nn.Linear(config.d_model*config.num_queries, config.d_latent)
         self.decoder_bottleneck_projector = torch.nn.Linear(config.d_latent, config.d_model*config.num_queries)
@@ -948,16 +938,6 @@ class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
         prediction = self.output_head(decoder_outputs[0])
 
         return prediction
-    
-        # prediction_loss = self.loss(prediction, data)
-
-        # loss should be shifted to the right
-        # prediction_loss = self.loss(prediction[:, :-1, :], data[:, 1:, :])
-
-        # return Seq2SeqTSPredictionOutput(
-        #     loss=prediction_loss,
-        #     encoder_last_hidden_state=encoder_latents,
-        # )
 
     @torch.no_grad()
     def generate(

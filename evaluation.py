@@ -65,6 +65,15 @@ def evaluate(model, dataset, device, writer, step, args):
             ax[0].imshow(original_image)
             ax[1].imshow(reconstructed_image)
             writer.add_figure(f'reconstruction/image_pair_{i}', fig, step)
+
+            # plot pixel intensity histograms of image pairs
+            fig, ax = plt.subplots(1, 1)
+            fig.set_size_inches(10, 5)
+            ax.hist(np.array(original_image).flatten(), bins=100, alpha=0.5, label='original')
+            ax.hist(np.array(reconstructed_image).flatten(), bins=100, alpha=0.5, label='reconstructed')
+            ax.legend()
+            writer.add_figure(f'reconstruction/histogram_{i}', fig, step)
+
             
             mse_sum += ((data - reconstructed) ** 2).mean().item()
 
