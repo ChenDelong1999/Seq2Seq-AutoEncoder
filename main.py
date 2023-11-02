@@ -238,8 +238,8 @@ if __name__ == '__main__':
 # on 3090ti GPU, MNIST
 CUDA_VISIBLE_DEVICES=1,2 python main.py \
     --dataset mnist --img_size 28 \
-    --eval_interval 500 --save_interval=10000 \
-    --batch_size=32 --gradient_accumulation_steps 1 --lr=5e-5  --n_generation=10 \
+    --eval_interval 1000 --save_interval=10000 \
+    --batch_size=32 --gradient_accumulation_steps 1 --lr=5e-5  --n_generation=3 \
     --d_model 512 --encoder_layers 6 --decoder_layers 6 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
     --encoder_ffn_dim 512 --decoder_ffn_dim 512 \
