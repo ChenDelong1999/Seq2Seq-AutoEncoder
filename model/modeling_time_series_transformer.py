@@ -163,6 +163,7 @@ class TimeSeriesTransformerAttention(nn.Module):
         key_value_states: Optional[torch.Tensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        sinusoidal_pos: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
@@ -200,8 +201,14 @@ class TimeSeriesTransformerAttention(nn.Module):
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
         else:
             # self_attention
-            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+            key_states = self.k_proj(hidden_states)
+            value_states = self.v_proj(hidden_states)
+            if sinusoidal_pos is not None:
+                query_states, key_states, value_states = self.apply_rotary_position_embeddings(
+                    sinusoidal_pos, query_states, key_states, value_states
+                )
+            key_states = self._shape(key_states, -1, bsz)
+            value_states = self._shape(value_states, -1, bsz)
 
         if self.is_decoder:
             # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
@@ -276,7 +283,33 @@ class TimeSeriesTransformerAttention(nn.Module):
         attn_output = self.out_proj(attn_output)
 
         return attn_output, attn_weights_reshaped, past_key_value
-
+    
+    @staticmethod
+    def apply_rotary_position_embeddings(sinusoidal_pos, query_layer, key_layer, value_layer=None):
+        # https://kexue.fm/archives/8265
+        # sin [batch_size, num_heads, sequence_length, embed_size_per_head//2]
+        # cos [batch_size, num_heads, sequence_length, embed_size_per_head//2]
+        sin, cos = sinusoidal_pos.chunk(2, dim=-1)
+        # sin [θ0,θ1,θ2......θd/2-1] -> sin_pos [θ0,θ0,θ1,θ1,θ2,θ2......θd/2-1,θd/2-1]
+        sin_pos = torch.stack([sin, sin], dim=-1).reshape_as(sinusoidal_pos)
+        # cos [θ0,θ1,θ2......θd/2-1] -> cos_pos [θ0,θ0,θ1,θ1,θ2,θ2......θd/2-1,θd/2-1]
+        cos_pos = torch.stack([cos, cos], dim=-1).reshape_as(sinusoidal_pos)
+        # rotate_half_query_layer [-q1,q0,-q3,q2......,-qd-1,qd-2]
+        rotate_half_query_layer = torch.stack([-query_layer[..., 1::2], query_layer[..., ::2]], dim=-1).reshape_as(
+            query_layer
+        )
+        query_layer = query_layer * cos_pos + rotate_half_query_layer * sin_pos
+        # rotate_half_key_layer [-k1,k0,-k3,k2......,-kd-1,kd-2]
+        rotate_half_key_layer = torch.stack([-key_layer[..., 1::2], key_layer[..., ::2]], dim=-1).reshape_as(key_layer)
+        key_layer = key_layer * cos_pos + rotate_half_key_layer * sin_pos
+        if value_layer is not None:
+            # rotate_half_value_layer [-v1,v0,-v3,v2......,-vd-1,vd-2]
+            rotate_half_value_layer = torch.stack([-value_layer[..., 1::2], value_layer[..., ::2]], dim=-1).reshape_as(
+                value_layer
+            )
+            value_layer = value_layer * cos_pos + rotate_half_value_layer * sin_pos
+            return query_layer, key_layer, value_layer
+        return query_layer, key_layer
 
 # Copied from transformers.models.bart.modeling_bart.BartEncoderLayer with Bart->TimeSeriesTransformer
 class TimeSeriesTransformerEncoderLayer(nn.Module):
@@ -300,6 +333,7 @@ class TimeSeriesTransformerEncoderLayer(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         attention_mask: torch.FloatTensor,
+        sinusoidal_pos: torch.FloatTensor,
         layer_head_mask: torch.FloatTensor,
         output_attentions: Optional[bool] = False,
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
@@ -318,6 +352,7 @@ class TimeSeriesTransformerEncoderLayer(nn.Module):
         hidden_states, attn_weights, _ = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
+            sinusoidal_pos=sinusoidal_pos,
             layer_head_mask=layer_head_mask,
             output_attentions=output_attentions,
         )
@@ -379,6 +414,7 @@ class TimeSeriesTransformerDecoderLayer(nn.Module):
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
+        sinusoidal_pos: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
@@ -415,6 +451,7 @@ class TimeSeriesTransformerDecoderLayer(nn.Module):
             hidden_states=hidden_states,
             past_key_value=self_attn_past_key_value,
             attention_mask=attention_mask,
+            sinusoidal_pos=sinusoidal_pos,
             layer_head_mask=layer_head_mask,
             output_attentions=output_attentions,
         )
@@ -434,6 +471,7 @@ class TimeSeriesTransformerDecoderLayer(nn.Module):
                 hidden_states=hidden_states,
                 key_value_states=encoder_hidden_states,
                 attention_mask=encoder_attention_mask,
+                sinusoidal_pos=sinusoidal_pos,
                 layer_head_mask=cross_attn_layer_head_mask,
                 past_key_value=cross_attn_past_key_value,
                 output_attentions=output_attentions,
@@ -507,7 +545,12 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
             raise ValueError("The `prediction_length` config needs to be specified.")
 
         self.value_embedding = TimeSeriesValueEmbedding(feature_size=config.input_size, d_model=config.d_model)
-        self.learnable_positional_embedding = learnable_positional_embedding        
+        self.learnable_positional_embedding = learnable_positional_embedding
+        self.embed_positions = TimeSeriesSinusoidalPositionalEmbedding(
+            config.context_length,
+            config.d_model,
+        )
+
         self.layers = nn.ModuleList([TimeSeriesTransformerEncoderLayer(config) for _ in range(config.encoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
@@ -584,6 +627,7 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
                     f" {head_mask.size()[0]}."
                 )
 
+        sinusoidal_pos = self.embed_positions(hidden_states.size(), past_key_values_length=0)
         for idx, encoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 encoder_states = encoder_states + (hidden_states,)
@@ -609,12 +653,14 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
                         create_custom_forward(encoder_layer),
                         hidden_states,
                         attention_mask,
+                        sinusoidal_pos,
                         (head_mask[idx] if head_mask is not None else None),
                     )
                 else:
                     layer_outputs = encoder_layer(
                         hidden_states,
                         attention_mask,
+                        sinusoidal_pos,
                         layer_head_mask=(head_mask[idx] if head_mask is not None else None),
                         output_attentions=output_attentions,
                     )
@@ -652,6 +698,11 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
 
         self.value_embedding = TimeSeriesValueEmbedding(feature_size=config.input_size, d_model=config.d_model)
         self.learnable_positional_embedding = learnable_positional_embedding
+        self.embed_positions = TimeSeriesSinusoidalPositionalEmbedding(
+            config.prediction_length,
+            config.d_model,
+        )
+
         self.layers = nn.ModuleList([TimeSeriesTransformerDecoderLayer(config) for _ in range(config.decoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
@@ -802,6 +853,7 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
                         f" {head_mask.size()[0]}."
                     )
 
+        sinusoidal_pos = self.embed_positions(hidden_states.size(), past_key_values_length=0)
         for idx, decoder_layer in enumerate(self.layers):
             # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
             if output_hidden_states:
@@ -826,6 +878,7 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
                     create_custom_forward(decoder_layer),
                     hidden_states,
                     attention_mask,
+                    sinusoidal_pos,
                     encoder_hidden_states,
                     encoder_attention_mask,
                     head_mask[idx] if head_mask is not None else None,
@@ -836,6 +889,7 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=attention_mask,
+                    sinusoidal_pos=sinusoidal_pos,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
                     layer_head_mask=(head_mask[idx] if head_mask is not None else None),
