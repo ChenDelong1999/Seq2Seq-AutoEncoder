@@ -43,7 +43,7 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
             total_loss = total_loss / args.gradient_accumulation_steps
             scaler.scale(total_loss).backward()
 
-        if (i+1) % args.gradient_accumulation_steps == 0:
+        if (step+1) % args.gradient_accumulation_steps == 0:
             scaler.unscale_(optimizer)
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.clip_grad_norm)
             scaler.step(optimizer)
@@ -61,7 +61,7 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
             if step==0:
                 print(f'Input data: {data.shape}\n{data}')
 
-        if i % args.log_interval == 0 and args.rank == 0:
+        if step % args.log_interval == 0 and args.rank == 0:
             step_time = (time.time() - start_time) / args.log_interval
             start_time = time.time()
             writer.add_scalar('train/step_time', step_time, step)
