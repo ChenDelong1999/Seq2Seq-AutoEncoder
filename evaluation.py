@@ -4,7 +4,7 @@ import torch
 import random
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
-
+from loss import seq2seq_autoencoder_loss
 from data.image_classification_dataset import decode_image_from_data
 
 def evaluate(model, dataset, device, writer, step, args):
@@ -14,6 +14,8 @@ def evaluate(model, dataset, device, writer, step, args):
 
     with torch.no_grad():
 
+        targets = []
+        reconstructions = []
         print('Runing conditional auto-regressive generation')
         for i in tqdm.tqdm(range(args.n_generation)):
             data, image_info = dataset[random.randint(0, len(dataset)-1)]
@@ -37,13 +39,6 @@ def evaluate(model, dataset, device, writer, step, args):
                 img_channels=dataset.img_channels
                 )
 
-            # # plot original and reconstructed shape_encoding heatmap
-            # fig, ax = plt.subplots(1, 2)
-            # fig.set_size_inches(10,5)
-            # ax[0].imshow(original_shape_encoding)
-            # ax[1].imshow(reconstructed_shape_encoding)
-            # writer.add_figure(f'special_tokens/shape_encoding_{i}', fig, step)
-
             # plot original and reconstructed shape_encoding lines
             fig, ax = plt.subplots(1, 1)
             fig.set_size_inches(15, 3)
@@ -66,16 +61,24 @@ def evaluate(model, dataset, device, writer, step, args):
             ax[1].imshow(reconstructed_image)
             writer.add_figure(f'reconstruction/image_pair_{i}', fig, step)
 
-            # plot pixel intensity histograms of image pairs
-            fig, ax = plt.subplots(1, 1)
-            fig.set_size_inches(10, 5)
-            ax.hist(np.array(original_image).flatten(), bins=100, alpha=0.5, label='original')
-            ax.hist(np.array(reconstructed_image).flatten(), bins=100, alpha=0.5, label='reconstructed')
-            ax.legend()
-            writer.add_figure(f'reconstruction/histogram_{i}', fig, step)
 
-            
-            mse_sum += ((data - reconstructed) ** 2).mean().item()
+            # mse_sum += ((data - reconstructed) ** 2).mean().item()
+            targets.append(data.squeeze(0))
+            reconstructions.append(reconstructed.squeeze(0))
+
+        reconstructions = torch.stack(reconstructions)
+        targets = torch.stack(targets)
+        test_loss = seq2seq_autoencoder_loss(reconstructions, targets, args.channel_info)
+        test_loss['total'] = sum(test_loss.values())
+
+        # plot pixel intensity histograms of image pairs
+        fig, ax = plt.subplots(1, 1)
+        fig.set_size_inches(10, 5)
+        ax.hist(targets.cpu().numpy().flatten(), bins=100, alpha=0.5, label='original')
+        ax.hist(reconstructions.cpu().numpy().flatten(), bins=100, alpha=0.5, label='reconstructed')
+        ax.legend()
+        writer.add_figure(f'reconstruction/histogram_{i}', fig, step)
+
 
         print('Starting extraction of latent representations and T-SNE')
         latents = []
@@ -98,9 +101,5 @@ def evaluate(model, dataset, device, writer, step, args):
         ax.scatter(latents_tsne[:, 0], latents_tsne[:, 1], c=labels, cmap='tab10', s=10, alpha=0.5)
         writer.add_figure(f'tsne/tsne', fig, step)
 
-        reconstruction_mse = mse_sum / args.n_generation
-
-    return {
-        'reconstruction_mse': reconstruction_mse
-    }
+    return test_loss
 
