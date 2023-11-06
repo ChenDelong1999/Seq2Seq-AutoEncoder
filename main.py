@@ -88,7 +88,7 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
 
 def main(rank, world_size, args):
 
-    ddp_setup(rank, world_size)
+    ddp_setup(rank, world_size, args.master_port)
     
     args.rank = rank
 
@@ -194,6 +194,7 @@ def main(rank, world_size, args):
 if __name__ == '__main__':
     # Define command line arguments
     parser = argparse.ArgumentParser(description='Seq2Seq-AutoEncoder')
+    parser.add_argument('--master_port', type=str, default='12355', help='port to use for communication with master process')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size')
     parser.add_argument('--gradient_accumulation_steps', type=int, default=4, help='gradient accumulation')
 
@@ -240,6 +241,18 @@ CUDA_VISIBLE_DEVICES=1,2 python main.py \
     --dataset mnist --img_size 28 \
     --eval_interval 1000 --save_interval=10000 \
     --batch_size=32 --gradient_accumulation_steps 1 --lr=5e-5  --n_generation=3 \
+    --d_model 512 --encoder_layers 6 --decoder_layers 6 \
+    --encoder_attention_heads 8 --decoder_attention_heads 8 \
+    --encoder_ffn_dim 512 --decoder_ffn_dim 512 \
+    --num_queries 16 --d_latent 128
+
+# on 10GB GPU, CIFAR10
+CUDA_VISIBLE_DEVICES=0,1,2 python main.py \
+    --dataset cifar10 --img_size 32 --master_port 12354 \
+    --epochs 100 \
+    --pretrained '/home/delong/workspace/seq2seq_autoencoder/runs/Nov04_19-30-05_black-rack-0-cifar10-[model=0.03B-16queries]-[lr5e-05-bs16x1step-3gpu]/checkpoints/checkpoint_ep307_step320k' \
+    --eval_interval 1000 --save_interval=10000 \
+    --batch_size=16 --gradient_accumulation_steps 1 --lr=5e-5  --n_generation=3 \
     --d_model 512 --encoder_layers 6 --decoder_layers 6 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
     --encoder_ffn_dim 512 --decoder_ffn_dim 512 \
