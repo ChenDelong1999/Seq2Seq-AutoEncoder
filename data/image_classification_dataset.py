@@ -22,7 +22,7 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         self.num_channels = self.img_channels + 1 + 1
         if self.img_channels==3:
             self.channel_info = {
-                'data': [0,2],
+                'data': [0,3],
                 'shape_encoding': 3,
                 'is_data': 4,
             }
