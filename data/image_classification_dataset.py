@@ -9,12 +9,13 @@ import torchvision.transforms as transforms
 
 
 class SeqImgClsDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, img_size=32, img_channels=3, num_queries=64):
+    def __init__(self, dataset, img_size=32, img_channels=3, num_queries=64, min_resize_ratio=0.5):
         self.dataset = dataset
         self.img_size = img_size
         self.img_channels = img_channels
         self.data_seq_length = img_size * img_size
         self.num_queries = num_queries
+        self.min_resize_ratio = min_resize_ratio
         self.model_seq_length = self.data_seq_length + self.num_queries + 1
 
         # self.postional_embedding = self.get_shape_encoding()
@@ -81,8 +82,8 @@ class SeqImgClsDataset(torch.utils.data.Dataset):
         image = torch.clamp(image, 1e-6, 1-1e-6)
         # print(f'\nOriginal image: {image.shape}\n{image}')
         
-        width = np.random.randint(self.img_size/2, self.img_size)
-        height = np.random.randint(self.img_size/2, self.img_size)
+        width = np.random.randint(self.img_size*self.min_resize_ratio, self.img_size)
+        height = np.random.randint(self.img_size*self.min_resize_ratio, self.img_size)
         # width, height = self.img_size, self.img_size
 
         image = transforms.Resize((width, height), antialias=True)(image)

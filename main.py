@@ -202,6 +202,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='cifar10') # choices=['cifar10', 'cifar100', 'stl10']
     parser.add_argument('--img_size', type=int, default=32, help='maximum image size')
     parser.add_argument('--data_dir', type=str, default='data/cache', help='path to dataset directory')
+    
+    parser.add_argument('--min_resize_ratio', type=float, default=0.5, help='')
     parser.add_argument('--num_workers', type=int, default=2, help='maximum image size')
 
     # Model parameters
@@ -261,9 +263,10 @@ CUDA_VISIBLE_DEVICES=0,1,2 python main.py \
 
 # on A100 80G GPU
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
-    --dataset stl10 --img_size 64 \
+    --dataset stl10 --img_size 64 --min_resize_ratio 0.2 \
+    --epochs 50 \
     --eval_interval 10000 --save_interval=10000 \
-    --batch_size=1 --gradient_accumulation_steps 8 --lr=5e-5  --n_generation=1 \
+    --batch_size=1 --gradient_accumulation_steps 8 --lr=1e-5  --n_generation=1 \
     --d_model 1024 --encoder_layers 24 --decoder_layers 24 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
     --encoder_ffn_dim 4096 --decoder_ffn_dim 4096 \
