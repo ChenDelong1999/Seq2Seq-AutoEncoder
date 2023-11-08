@@ -19,7 +19,7 @@ def evaluate(model, dataset, device, writer, step, args):
         print('Runing conditional auto-regressive generation')
         for i in tqdm.tqdm(range(args.n_generation)):
             data, image_info = dataset[random.randint(0, len(dataset)-1)]
-            data = data.to(device).unsqueeze(0)
+            data = data.half().to(device).unsqueeze(0)
 
             latents = model.module.encode(data)
             reconstructed = model.module.generate(latents)

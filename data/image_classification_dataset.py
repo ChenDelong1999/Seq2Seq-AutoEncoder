@@ -9,6 +9,7 @@ import torchvision.transforms as transforms
 
 
 class SeqImgClsDataset(torch.utils.data.Dataset):
+    
     def __init__(self, dataset, img_size=32, img_channels=3, num_queries=64, min_resize_ratio=0.5):
         self.dataset = dataset
         self.img_size = img_size
