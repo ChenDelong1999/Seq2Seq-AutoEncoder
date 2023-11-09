@@ -33,7 +33,7 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
     scaler = GradScaler()
 
     for i, (data, _) in enumerate(dataloader):
-        data = data.half().to(device)
+        data = data.to(device)
 
         with autocast():
             # loss =  model(data)['loss']

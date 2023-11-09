@@ -2,7 +2,7 @@
 from torchvision.datasets import CIFAR10, CIFAR100, STL10, MNIST
 from torchvision.transforms import ToTensor
 from .image_classification_dataset import SeqImgClsDataset
-from .segment_dataset import COCOMaskDataset
+from .segmentation_dataset import COCODataset, SeqMaskDataset
 
 def get_dataset(args):
     if args.dataset=='cifar10':
@@ -66,8 +66,20 @@ def get_dataset(args):
             min_resize_ratio=args.min_resize_ratio,
         )
     elif args.dataset=='coco':
-        train_dataset = COCOMaskDataset(coco_root=args.data_dir, split='train', num_queries=args.num_queries, virtual_dataset_size=100000, data_seq_length=args.img_size**2, min_pixel_num=16)
-        test_dataset = COCOMaskDataset(coco_root=args.data_dir, split='val', num_queries=args.num_queries, virtual_dataset_size=100000, data_seq_length=args.img_size**2, min_pixel_num=16)
-
+        # train_dataset = COCOMaskDataset(coco_root=args.data_dir, split='train', num_queries=args.num_queries, virtual_dataset_size=100000, data_seq_length=args.img_size**2, min_pixel_num=16)
+        # test_dataset = COCOMaskDataset(coco_root=args.data_dir, split='val', num_queries=args.num_queries, virtual_dataset_size=100000, data_seq_length=args.img_size**2, min_pixel_num=16)
+        train_dataset = SeqMaskDataset(
+            dataset=COCODataset(coco_root=args.data_dir, split='train'), 
+            num_queries=args.num_queries, 
+            virtual_dataset_size=100000, 
+            data_seq_length=args.img_size**2
+        )
+        test_dataset = SeqMaskDataset(
+            dataset=COCODataset(coco_root=args.data_dir, split='val'), 
+            num_queries=args.num_queries, 
+            virtual_dataset_size=100000, 
+            data_seq_length=args.img_size**2
+        )
+        
     return train_dataset, test_dataset
 

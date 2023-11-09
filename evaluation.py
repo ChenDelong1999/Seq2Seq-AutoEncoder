@@ -5,7 +5,7 @@ import random
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from loss import seq2seq_autoencoder_loss
-from data.image_classification_dataset import decode_image_from_data
+from PIL import Image
 
 def evaluate(model, dataset, device, writer, step, args):
 
@@ -18,23 +18,23 @@ def evaluate(model, dataset, device, writer, step, args):
         reconstructions = []
         print('Runing conditional auto-regressive generation')
         for i in tqdm.tqdm(range(args.n_generation)):
-            data, image_info = dataset[random.randint(0, len(dataset)-1)]
-            data = data.half().to(device).unsqueeze(0)
+            data, sample_info = dataset[random.randint(0, len(dataset)-1)]
+            data = data.to(device).unsqueeze(0)
 
             latents = model.module.encode(data)
             reconstructed = model.module.generate(latents)
 
-            original_image, original_is_data, original_shape_encoding = decode_image_from_data(
+            original_image, original_is_data, original_shape_encoding = dataset.decode_image_from_data(
                 data.squeeze(0).cpu(), 
-                image_info['width'], 
-                image_info['height'], 
+                sample_info['width'], 
+                sample_info['height'], 
                 dataset.num_queries, 
                 img_channels=dataset.img_channels
                 )
-            reconstructed_image, reconstructed_is_data, reconstructed_shape_encoding = decode_image_from_data(
+            reconstructed_image, reconstructed_is_data, reconstructed_shape_encoding = dataset.decode_image_from_data(
                 reconstructed.squeeze(0).cpu(), 
-                image_info['width'], 
-                image_info['height'], 
+                sample_info['width'], 
+                sample_info['height'], 
                 dataset.num_queries, 
                 img_channels=dataset.img_channels
                 )
@@ -56,9 +56,20 @@ def evaluate(model, dataset, device, writer, step, args):
             writer.add_figure(f'special_tokens/is_data_{i}', fig, step)
 
             # log image pairs to tensorboard
-            fig, ax = plt.subplots(1, 2)
-            ax[0].imshow(original_image)
-            ax[1].imshow(reconstructed_image)
+            if 'image_path' in sample_info.keys():
+                fig, ax = plt.subplots(1, 3)
+                fig.set_size_inches(15, 5)
+                ax[0].imshow(Image.open(sample_info['image_path']))
+                x, y, w, h = sample_info['bbox']
+                rect = plt.Rectangle((x, y), w, h, fill=False, color='red')
+                ax[0].add_patch(rect)
+                
+                ax[1].imshow(original_image)
+                ax[2].imshow(reconstructed_image)
+            else:
+                fig, ax = plt.subplots(1, 2)
+                ax[0].imshow(original_image)
+                ax[1].imshow(reconstructed_image)
             writer.add_figure(f'reconstruction/image_pair_{i}', fig, step)
 
 
@@ -84,11 +95,11 @@ def evaluate(model, dataset, device, writer, step, args):
         latents = []
         labels = []  
         for i in tqdm.tqdm(range(args.n_tsne_samples)):
-            data, image_info = dataset[i]
+            data, sample_info = dataset[i]
             data = data.to(device).unsqueeze(0)
             latent = model.module.encode(data).flatten().cpu().numpy()
             latents.append(latent)
-            labels.append(image_info['label'])
+            labels.append(sample_info['label'])
 
         latents = np.array(latents)
         labels = np.array(labels)
