@@ -4,8 +4,74 @@ from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
 from pycocotools.coco import COCO
+from pycocotools.mask import decode
+
 from scipy.ndimage import label
 from torchvision import transforms
+import os
+import json
+
+class SA1BDataset:
+    def __init__(self, sa1b_root):
+        self.sa1b_root = sa1b_root
+        self.img_ids = []
+
+        # looking for paired .jpg & .json files within each subfolder of sa1b_root
+        print(f'Loading SA1B samples from {sa1b_root}...')
+        for root, dirs, files in os.walk(sa1b_root):
+            for file in files:
+                if file.endswith('.jpg') and os.path.exists(os.path.join(root, file[:-4] + '.json')):
+                    self.img_ids.append(os.path.join(root, file.replace('.jpg', '')))
+        print(f'Found {len(self.img_ids)} samples.')
+
+    def preprocess_annotations(self, annotations, min_pixel_num):
+        new_annotations = []
+        for annotation in annotations:
+            mask = decode(annotation['segmentation'])
+            labeled_mask, num_labels = label(mask)
+            for i in range(1, num_labels + 1):
+                new_annotation = annotation.copy()
+                new_annotation['segmentation'] = (labeled_mask == i)
+                if new_annotation['segmentation'].sum() >= min_pixel_num:
+                    new_annotation['bbox'] = [
+                        np.min(np.where(new_annotation['segmentation'])[1]),  # x_min
+                        np.min(np.where(new_annotation['segmentation'])[0]),  # y_min
+                        np.max(np.where(new_annotation['segmentation'])[1]) - np.min(np.where(new_annotation['segmentation'])[1]),  # width
+                        np.max(np.where(new_annotation['segmentation'])[0]) - np.min(np.where(new_annotation['segmentation'])[0]),  # height
+                    ]
+                    new_annotations.append(new_annotation)
+            break
+        return new_annotations
+    
+    def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
+        if image_index is None:
+            image_index = np.random.randint(0, len(self.img_ids))
+        img_path = self.img_ids[image_index] + '.jpg'
+        image = np.array(Image.open(img_path).convert('RGB'))
+
+        annotations = json.load(open(self.img_ids[image_index] + '.json'))['annotations']
+        annotations = self.preprocess_annotations(annotations, min_pixel_num)
+        segments = []
+        for annotation in annotations:
+            label = 0
+            mask = annotation['segmentation']
+            bbox = [int(b) for b in annotation['bbox']]
+            bbox[2] = 1 if bbox[2] == 0 else bbox[2]
+            bbox[3] = 1 if bbox[3] == 0 else bbox[3]
+            
+            masked_img = image * mask[:, :, None]
+            x, y, w, h = bbox
+            patch = masked_img[y:y+h, x:x+w]
+            patch_mask = mask[y:y+h, x:x+w]
+            segments.append({
+                "patch": patch,
+                "mask": patch_mask,
+                'image_path': img_path,
+                'bbox': bbox, # 'x', 'y', 'width', 'height
+                "label": label,
+            })  
+
+        return segments
 
 class COCODataset:
     def __init__(self, coco_root, split):
@@ -169,14 +235,21 @@ class SeqMaskDataset(Dataset):
     
 
 if __name__=='__main__':
+
+
     
     from PIL import Image
     import matplotlib.pyplot as plt
-
-    coco_dataset = COCODataset('/home/dchenbs/workspace/datasets/coco2017', 'val')
-    seq_mask_dataset = SeqMaskDataset(coco_dataset, num_queries=64)
     import tqdm
-    for i in tqdm.tqdm(range(10000)):
+
+
+    sa1b_dataset = SA1BDataset('/home/dchenbs/workspace/datasets/sa1b')
+    seq_mask_dataset = SeqMaskDataset(sa1b_dataset, num_queries=64)
+
+    # coco_dataset = COCODataset('/home/dchenbs/workspace/datasets/coco2017', 'val')
+    # seq_mask_dataset = SeqMaskDataset(coco_dataset, num_queries=64)
+
+    for i in tqdm.tqdm(range(500)):
         segment, segment_info = seq_mask_dataset[i]
 
         # print(segment.shape)
@@ -188,7 +261,7 @@ if __name__=='__main__':
         #     seq_mask_dataset.num_queries, 
         #     img_channels=seq_mask_dataset.img_channels
         #     )
-        
+        # plt.figure(figsize=(20, 10))
         # plt.subplot(1, 2, 1)
         # plt.imshow(Image.open(segment_info['image_path']))
         # x, y, w, h = segment_info['bbox']
