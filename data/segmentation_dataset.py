@@ -15,14 +15,14 @@ class SA1BDataset:
     def __init__(self, sa1b_root):
         self.sa1b_root = sa1b_root
         self.img_ids = []
-
-        # looking for paired .jpg & .json files within each subfolder of sa1b_root
-        print(f'Loading SA1B samples from {sa1b_root}...')
-        for root, dirs, files in os.walk(sa1b_root):
-            for file in files:
-                if file.endswith('.jpg') and os.path.exists(os.path.join(root, file[:-4] + '.json')):
-                    self.img_ids.append(os.path.join(root, file.replace('.jpg', '')))
-        print(f'Found {len(self.img_ids)} samples.')
+        
+        for subfolder in os.listdir(sa1b_root):
+            subfolder_path = os.path.join(sa1b_root, subfolder)
+            if os.path.isdir(subfolder_path):
+                for img_file in os.listdir(subfolder_path):
+                    if img_file.endswith('.jpg'):
+                        self.img_ids.append(os.path.join(subfolder_path, img_file[:-4]))
+        print(f"SA1B dataset loaded. {len(self.img_ids)} images found.")
 
     def preprocess_annotations(self, annotations, min_pixel_num):
         new_annotations = []
@@ -45,11 +45,16 @@ class SA1BDataset:
     
     def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
         if image_index is None:
-            image_index = np.random.randint(0, len(self.img_ids))
-        img_path = self.img_ids[image_index] + '.jpg'
-        image = np.array(Image.open(img_path).convert('RGB'))
+            success = False
+            while not success:
+                image_index = np.random.randint(0, len(self.img_ids))
+                img_path = self.img_ids[image_index] + '.jpg'
+                json_path = self.img_ids[image_index] + '.json'
+                if os.path.exists(json_path):
+                    success = True
 
-        annotations = json.load(open(self.img_ids[image_index] + '.json'))['annotations']
+        image = np.array(Image.open(img_path).convert('RGB'))
+        annotations = json.load(open(json_path))['annotations']
         annotations = self.preprocess_annotations(annotations, min_pixel_num)
         segments = []
         for annotation in annotations:
