@@ -59,10 +59,8 @@ class SA1BDataset:
                     except:
                         pass
 
-                    
         segments = []
         for annotation in annotations:
-            label = 0
             mask = annotation['segmentation']
             bbox = [int(b) for b in annotation['bbox']]
             bbox[2] = 1 if bbox[2] == 0 else bbox[2]
@@ -77,7 +75,8 @@ class SA1BDataset:
                 "mask": patch_mask,
                 'image_path': img_path,
                 'bbox': bbox, # 'x', 'y', 'width', 'height
-                "label": label,
+                "label": 0,
+                "name": "",
             })  
 
         return segments
@@ -142,6 +141,7 @@ class COCODataset:
                 'image_path': img_path,
                 'bbox': bbox, # 'x', 'y', 'width', 'height
                 "label": label,
+                "name": self.id_to_name[label],
             })  
 
         return segments

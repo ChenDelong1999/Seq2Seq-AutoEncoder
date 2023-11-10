@@ -39,12 +39,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python main.py \
 ```
 
 ```bash
-# on A100/A800 80G GPU, [COCO]
+# on A100/A800 80G GPU, [COCO], HKUST
 CUDA_VISIBLE_DEVICES=0,1,2,3 python main.py --master_port '12345' \
     --dataset coco --data_dir '/home/dchenbs/workspace/datasets/coco2017' \
     --img_size 32 --min_resize_ratio 0.8 \
     --epochs 50 \
-    --eval_interval 1000 --save_interval=5000 \
+    --eval_interval 10 --save_interval=5000 \
     --batch_size=16 --gradient_accumulation_steps 1 --lr=1e-5  --n_generation=1 \
     --d_model 1024 --encoder_layers 12 --decoder_layers 12 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
