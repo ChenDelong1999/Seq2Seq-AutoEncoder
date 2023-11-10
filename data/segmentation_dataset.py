@@ -11,6 +11,7 @@ from torchvision import transforms
 import os
 import json
 
+
 class SA1BDataset:
     def __init__(self, sa1b_root):
         self.sa1b_root = sa1b_root
@@ -81,6 +82,7 @@ class SA1BDataset:
 
         return segments
 
+
 class COCODataset:
     def __init__(self, coco_root, split):
         self.coco_root = coco_root
@@ -146,6 +148,7 @@ class COCODataset:
 
         return segments
 
+
 class SeqMaskDataset(Dataset):
     def __init__(self, dataset, num_queries, virtual_dataset_size=1000, data_seq_length=64*64, min_resize_ratio=1.0):
         self.dataset = dataset
@@ -177,6 +180,7 @@ class SeqMaskDataset(Dataset):
             'width': segment['patch'].shape[1],
             'height': segment['patch'].shape[0],
             'label': segment['label'],
+            'name': segment['name'],
             'image_path': segment['image_path'],
             'bbox': segment['bbox'],
         }
@@ -247,52 +251,4 @@ class SeqMaskDataset(Dataset):
     
 
 if __name__=='__main__':
-    from pycocotools.coco import COCO
-
-    # Initialize COCO API for instance annotations
-    coco = COCO('/home/dchenbs/workspace/datasets/coco2017/annotations/instances_train2017.json')
-
-    # Get all annotation ids
-    annotation_ids = coco.getAnnIds()
-
-    # Print the total number of annotations
-    print(f'Total number of instance annotations: {len(annotation_ids)}')
-
-    print(coco.loadAnns(annotation_ids[0]))
-
-    
-    # from PIL import Image
-    # import matplotlib.pyplot as plt
-    # import tqdm
-
-
-    # sa1b_dataset = SA1BDataset('/home/dchenbs/workspace/datasets/sa1b')
-    # seq_mask_dataset = SeqMaskDataset(sa1b_dataset, num_queries=64)
-
-    # # coco_dataset = COCODataset('/home/dchenbs/workspace/datasets/coco2017', 'val')
-    # # seq_mask_dataset = SeqMaskDataset(coco_dataset, num_queries=64)
-
-    # for i in tqdm.tqdm(range(500)):
-    #     segment, segment_info = seq_mask_dataset[i]
-
-    #     # print(segment.shape)
-
-    #     # segment, is_data_seq, shape_encoding_seq = seq_mask_dataset.decode_image_from_data(
-    #     #     segment, 
-    #     #     segment_info['width'], 
-    #     #     segment_info['height'], 
-    #     #     seq_mask_dataset.num_queries, 
-    #     #     img_channels=seq_mask_dataset.img_channels
-    #     #     )
-    #     # plt.figure(figsize=(20, 10))
-    #     # plt.subplot(1, 2, 1)
-    #     # plt.imshow(Image.open(segment_info['image_path']))
-    #     # x, y, w, h = segment_info['bbox']
-    #     # rect = plt.Rectangle((x, y), w, h, fill=False, color='red')
-    #     # plt.gca().add_patch(rect)
-
-    #     # plt.subplot(1, 2, 2)
-    #     # plt.imshow(segment)
-        
-    #     # plt.savefig(f'test{i}.png')
-    #     # plt.close()
+    pass

@@ -95,9 +95,8 @@ def visualize_segments(sample_info, original_segment, reconstructed_segment):
 
     if 'image_path' in sample_info.keys():
         fig, ax = plt.subplots(1, 3)
-        fig.suptitle(sample_info['name'])
-        fig, ax = plt.subplots(1, 3)
         fig.set_size_inches(15, 5)
+        fig.suptitle(sample_info['name'])
         ax[0].imshow(Image.open(sample_info['image_path']))
         x, y, w, h = sample_info['bbox']
         rect = plt.Rectangle((x, y), w, h, fill=False, color='red')
