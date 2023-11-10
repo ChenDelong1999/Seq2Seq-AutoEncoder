@@ -2,6 +2,7 @@ import argparse
 import os
 import json
 import tqdm
+import math
 import numpy as np
 import time
 import torch
@@ -15,6 +16,7 @@ from torch.distributed import destroy_process_group, barrier
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import autocast, GradScaler
+
 device = torch.device('cuda')
 
 
@@ -150,7 +152,25 @@ def main(rank, world_size, args):
     model = torch.compile(model)
     model = DDP(model.to(device), device_ids=[rank], find_unused_parameters=False)
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(train_dataloader), epochs=args.epochs, pct_start=0.05)
+    # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(train_dataloader), epochs=args.epochs, pct_start=0.05)
+
+    if args.scheduler == 'cosine':
+        # scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs*len(train_dataloader), eta_min=0)
+        def lr_lambda(current_step: int):
+            if current_step < args.warmup_steps:
+                return float(current_step) / float(max(1, args.warmup_steps))
+            else:
+                return 0.5 * (1.0 + math.cos(math.pi * (current_step - args.warmup_steps) / (len(train_dataloader) * args.epochs - args.warmup_steps)))
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    elif args.scheduler == 'constant':
+        def lr_lambda(current_step: int):
+            if current_step < args.warmup_steps:
+                return float(current_step) / float(max(1, args.warmup_steps))
+            else:
+                return 1
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    elif args.scheduler == 'onecycle':
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(train_dataloader), epochs=args.epochs, pct_start=0.05)
 
     # Set up TensorBoard logging
     if args.rank == 0:
@@ -220,6 +240,8 @@ if __name__ == '__main__':
 
     # Training parameters
     parser.add_argument('--lr', type=float, default=5e-4, help='learning rate')
+    parser.add_argument('--scheduler', type=str, default='constant', help='learning rate scheduler')
+    parser.add_argument('--warmup_steps', type=int, default=1000, help='number of warmup steps for the learning rate scheduler')
     parser.add_argument('--clip_grad_norm', type=float, default=1.0, help='gradient clipping norm')
     parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train')
     parser.add_argument('--log_interval', type=int, default=100, help='number of steps between each logging')
