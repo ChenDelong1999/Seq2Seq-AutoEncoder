@@ -240,41 +240,52 @@ class SeqMaskDataset(Dataset):
     
 
 if __name__=='__main__':
+    from pycocotools.coco import COCO
 
+    # Initialize COCO API for instance annotations
+    coco = COCO('/home/dchenbs/workspace/datasets/coco2017/annotations/instances_train2017.json')
+
+    # Get all annotation ids
+    annotation_ids = coco.getAnnIds()
+
+    # Print the total number of annotations
+    print(f'Total number of instance annotations: {len(annotation_ids)}')
+
+    print(coco.loadAnns(annotation_ids[0]))
 
     
-    from PIL import Image
-    import matplotlib.pyplot as plt
-    import tqdm
+    # from PIL import Image
+    # import matplotlib.pyplot as plt
+    # import tqdm
 
 
-    sa1b_dataset = SA1BDataset('/home/dchenbs/workspace/datasets/sa1b')
-    seq_mask_dataset = SeqMaskDataset(sa1b_dataset, num_queries=64)
+    # sa1b_dataset = SA1BDataset('/home/dchenbs/workspace/datasets/sa1b')
+    # seq_mask_dataset = SeqMaskDataset(sa1b_dataset, num_queries=64)
 
-    # coco_dataset = COCODataset('/home/dchenbs/workspace/datasets/coco2017', 'val')
-    # seq_mask_dataset = SeqMaskDataset(coco_dataset, num_queries=64)
+    # # coco_dataset = COCODataset('/home/dchenbs/workspace/datasets/coco2017', 'val')
+    # # seq_mask_dataset = SeqMaskDataset(coco_dataset, num_queries=64)
 
-    for i in tqdm.tqdm(range(500)):
-        segment, segment_info = seq_mask_dataset[i]
+    # for i in tqdm.tqdm(range(500)):
+    #     segment, segment_info = seq_mask_dataset[i]
 
-        # print(segment.shape)
+    #     # print(segment.shape)
 
-        # segment, is_data_seq, shape_encoding_seq = seq_mask_dataset.decode_image_from_data(
-        #     segment, 
-        #     segment_info['width'], 
-        #     segment_info['height'], 
-        #     seq_mask_dataset.num_queries, 
-        #     img_channels=seq_mask_dataset.img_channels
-        #     )
-        # plt.figure(figsize=(20, 10))
-        # plt.subplot(1, 2, 1)
-        # plt.imshow(Image.open(segment_info['image_path']))
-        # x, y, w, h = segment_info['bbox']
-        # rect = plt.Rectangle((x, y), w, h, fill=False, color='red')
-        # plt.gca().add_patch(rect)
+    #     # segment, is_data_seq, shape_encoding_seq = seq_mask_dataset.decode_image_from_data(
+    #     #     segment, 
+    #     #     segment_info['width'], 
+    #     #     segment_info['height'], 
+    #     #     seq_mask_dataset.num_queries, 
+    #     #     img_channels=seq_mask_dataset.img_channels
+    #     #     )
+    #     # plt.figure(figsize=(20, 10))
+    #     # plt.subplot(1, 2, 1)
+    #     # plt.imshow(Image.open(segment_info['image_path']))
+    #     # x, y, w, h = segment_info['bbox']
+    #     # rect = plt.Rectangle((x, y), w, h, fill=False, color='red')
+    #     # plt.gca().add_patch(rect)
 
-        # plt.subplot(1, 2, 2)
-        # plt.imshow(segment)
+    #     # plt.subplot(1, 2, 2)
+    #     # plt.imshow(segment)
         
-        # plt.savefig(f'test{i}.png')
-        # plt.close()
+    #     # plt.savefig(f'test{i}.png')
+    #     # plt.close()
