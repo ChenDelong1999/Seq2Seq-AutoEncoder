@@ -10,7 +10,10 @@ from scipy.ndimage import label
 from torchvision import transforms
 import os
 import json
-from lvis import LVIS
+try:
+    from lvis import LVIS
+except:
+    pass # temporary fix for the lvis & opencv installation issue
 import random
 
 
