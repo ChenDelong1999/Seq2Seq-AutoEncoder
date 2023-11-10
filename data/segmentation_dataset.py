@@ -224,7 +224,7 @@ class SeqMaskDataset(Dataset):
             shape_encoding = row[3]
             is_data = row[4]
 
-            segment_data.append(rgb)
+            segment_data.append(rgb.numpy())
             shape_encoding_seq.append(shape_encoding)
             is_data_seq.append(is_data)
 
