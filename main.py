@@ -147,7 +147,7 @@ def main(rank, world_size, args):
             print(f'Loaded pretrained model from {args.pretrained}')
     else:
         model = Seq2SeqAutoEncoderModel(config)
-
+    model = torch.compile(model)
     model = DDP(model.to(device), device_ids=[rank], find_unused_parameters=False)
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(train_dataloader), epochs=args.epochs, pct_start=0.05)

@@ -51,11 +51,15 @@ class SA1BDataset:
                 img_path = self.img_ids[image_index] + '.jpg'
                 json_path = self.img_ids[image_index] + '.json'
                 if os.path.exists(json_path):
-                    success = True
+                    try:
+                        image = np.array(Image.open(img_path).convert('RGB'))
+                        annotations = json.load(open(json_path))['annotations']
+                        annotations = self.preprocess_annotations(annotations, min_pixel_num)
+                        success = True
+                    except:
+                        pass
 
-        image = np.array(Image.open(img_path).convert('RGB'))
-        annotations = json.load(open(json_path))['annotations']
-        annotations = self.preprocess_annotations(annotations, min_pixel_num)
+                    
         segments = []
         for annotation in annotations:
             label = 0
@@ -143,7 +147,7 @@ class COCODataset:
         return segments
 
 class SeqMaskDataset(Dataset):
-    def __init__(self, dataset, num_queries, virtual_dataset_size=1000, data_seq_length=64*64):
+    def __init__(self, dataset, num_queries, virtual_dataset_size=1000, data_seq_length=64*64, min_resize_ratio=1.0):
         self.dataset = dataset
         self.virtual_dataset_size = virtual_dataset_size
         self.num_queries = num_queries
@@ -158,11 +162,13 @@ class SeqMaskDataset(Dataset):
             }
         self.sample_buffer = []
 
+        self.min_resize_ratio = min_resize_ratio
+
     def __getitem__(self, index):
         while len(self.sample_buffer) == 0:
             segments = self.dataset.load_segments_from_one_image()
             for segment in segments:
-                segment = self.resize_to_max_seq_length(segment)
+                segment = self.resize(segment)
                 segment = self.encode_to_sequence(segment)
                 self.sample_buffer.append(segment)
            
@@ -179,12 +185,13 @@ class SeqMaskDataset(Dataset):
     def __len__(self):
         return self.virtual_dataset_size
 
-    def resize_to_max_seq_length(self, segment):
+    def resize(self, segment):
         h, w = segment['patch'].shape[:2]
         if h * w > self.data_seq_length:
-            ratio = np.sqrt(self.data_seq_length / (h * w))
-            h = int(h * ratio)
-            w = int(w * ratio)
+            ratio_to_maxlength = np.sqrt(self.data_seq_length / (h * w))
+            ratio_random_resize = np.random.uniform(self.min_resize_ratio, 1.0)
+            h = int(h * ratio_to_maxlength * ratio_random_resize)
+            w = int(w * ratio_to_maxlength * ratio_random_resize)
             segment['patch'] = np.array(Image.fromarray(segment['patch']).resize((w, h)))
             segment['mask'] = np.array(Image.fromarray(segment['mask']).resize((w, h)))
         return segment

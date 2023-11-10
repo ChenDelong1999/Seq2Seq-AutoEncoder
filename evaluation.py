@@ -24,14 +24,14 @@ def evaluate(model, dataset, device, writer, step, args):
             latents = model.module.encode(data)
             reconstructed = model.module.generate(latents)
 
-            original_image, original_is_data, original_shape_encoding = dataset.decode_image_from_data(
+            original_segment, original_is_data, original_shape_encoding = dataset.decode_image_from_data(
                 data.squeeze(0).cpu(), 
                 sample_info['width'], 
                 sample_info['height'], 
                 dataset.num_queries, 
                 img_channels=dataset.img_channels
                 )
-            reconstructed_image, reconstructed_is_data, reconstructed_shape_encoding = dataset.decode_image_from_data(
+            reconstructed_segment, reconstructed_is_data, reconstructed_shape_encoding = dataset.decode_image_from_data(
                 reconstructed.squeeze(0).cpu(), 
                 sample_info['width'], 
                 sample_info['height'], 
@@ -55,25 +55,10 @@ def evaluate(model, dataset, device, writer, step, args):
             ax.legend()
             writer.add_figure(f'special_tokens/is_data_{i}', fig, step)
 
-            # log image pairs to tensorboard
-            if 'image_path' in sample_info.keys():
-                fig, ax = plt.subplots(1, 3)
-                fig.set_size_inches(15, 5)
-                ax[0].imshow(Image.open(sample_info['image_path']))
-                x, y, w, h = sample_info['bbox']
-                rect = plt.Rectangle((x, y), w, h, fill=False, color='red')
-                ax[0].add_patch(rect)
-                
-                ax[1].imshow(original_image)
-                ax[2].imshow(reconstructed_image)
-            else:
-                fig, ax = plt.subplots(1, 2)
-                ax[0].imshow(original_image)
-                ax[1].imshow(reconstructed_image)
+            # plot segment pairs
+            fig = visualize_segments(sample_info, original_segment, reconstructed_segment)
             writer.add_figure(f'reconstruction/image_pair_{i}', fig, step)
 
-
-            # mse_sum += ((data - reconstructed) ** 2).mean().item()
             targets.append(data.squeeze(0))
             reconstructions.append(reconstructed.squeeze(0))
 
@@ -81,15 +66,6 @@ def evaluate(model, dataset, device, writer, step, args):
         targets = torch.stack(targets)
         test_loss = seq2seq_autoencoder_loss(reconstructions, targets, args.channel_info)
         test_loss['total'] = sum(test_loss.values())
-
-        # plot pixel intensity histograms of image pairs
-        fig, ax = plt.subplots(1, 1)
-        fig.set_size_inches(10, 5)
-        ax.hist(targets.cpu().numpy().flatten(), bins=100, alpha=0.5, label='original')
-        ax.hist(reconstructions.cpu().numpy().flatten(), bins=100, alpha=0.5, label='reconstructed')
-        ax.legend()
-        writer.add_figure(f'reconstruction/histogram_{i}', fig, step)
-
 
         print('Starting extraction of latent representations and T-SNE')
         latents = []
@@ -114,3 +90,27 @@ def evaluate(model, dataset, device, writer, step, args):
 
     return test_loss
 
+
+def visualize_segments(sample_info, original_segment, reconstructed_segment):
+
+    if 'image_path' in sample_info.keys():
+        fig, ax = plt.subplots(1, 3)
+        fig.set_size_inches(15, 5)
+        ax[0].imshow(Image.open(sample_info['image_path']))
+        x, y, w, h = sample_info['bbox']
+        rect = plt.Rectangle((x, y), w, h, fill=False, color='red')
+        ax[0].add_patch(rect)
+        ax[0].axis('off')
+        
+        ax[1].imshow(original_segment)
+        ax[2].imshow(reconstructed_segment)
+        ax[2].axis('off')
+    else:
+        fig, ax = plt.subplots(1, 2)
+        ax[0].imshow(original_segment)
+        ax[1].imshow(reconstructed_segment)
+
+    ax[0].axis('off')
+    ax[1].axis('off')
+
+    return fig
