@@ -10,6 +10,8 @@ from scipy.ndimage import label
 from torchvision import transforms
 import os
 import json
+from lvis import LVIS
+import random
 
 
 class SA1BDataset:
@@ -41,7 +43,6 @@ class SA1BDataset:
                         np.max(np.where(new_annotation['segmentation'])[0]) - np.min(np.where(new_annotation['segmentation'])[0]),  # height
                     ]
                     new_annotations.append(new_annotation)
-            break
         return new_annotations
     
     def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
@@ -83,6 +84,80 @@ class SA1BDataset:
         return segments
 
 
+class LVISDataset:
+    def __init__(self, lvis_root, coco_root, split):
+        self.lvis_root = lvis_root
+        self.coco_root = coco_root
+
+        if split == 'train':
+            self.sub_dir = 'train2017'
+        elif split == 'val':
+            self.sub_dir = 'val2017'
+        else:
+            raise NotImplementedError
+
+        self.lvis = LVIS(f'{self.lvis_root}/lvis_v1_{split}.json')
+        self.img_ids = self.lvis.get_img_ids()
+        self.load_anns = self.lvis.load_anns()
+        print(f'Loaded "{split}" split of LVIS with {len(self.img_ids)} images and {len(self.load_anns)} annotations.')
+        
+    def preprocess_annotations(self, annotations, min_pixel_num):
+        new_annotations = []
+        for annotation in annotations:
+            mask = self.lvis.ann_to_mask(annotation)
+            labeled_mask, num_labels = label(mask)
+            for i in range(1, num_labels + 1):
+                new_annotation = annotation.copy()
+                new_annotation['segmentation'] = (labeled_mask == i)
+                if new_annotation['segmentation'].sum() >= min_pixel_num:
+                    new_annotation['bbox'] = [
+                        np.min(np.where(new_annotation['segmentation'])[1]),  # x_min
+                        np.min(np.where(new_annotation['segmentation'])[0]),  # y_min
+                        np.max(np.where(new_annotation['segmentation'])[1]) - np.min(np.where(new_annotation['segmentation'])[1]),  # width
+                        np.max(np.where(new_annotation['segmentation'])[0]) - np.min(np.where(new_annotation['segmentation'])[0]),  # height
+                    ]
+                    new_annotations.append(new_annotation)
+        return new_annotations
+
+    def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
+        if image_index is None:
+            img_id = random.choice(self.img_ids)
+
+        img = self.lvis.load_imgs([img_id])[0]
+        img_path = img['coco_url'].replace('http://images.cocodataset.org', os.path.join(self.coco_root, 'images'))
+        image = np.array(Image.open(img_path).convert('RGB'))
+
+        annotations = self.lvis.load_anns(self.lvis.get_ann_ids([img_id]))
+        annotations = self.preprocess_annotations(annotations, min_pixel_num)
+        segments = []
+        for annotation in annotations:
+            label = annotation['category_id']
+            mask = annotation['segmentation']
+            bbox = [int(b) for b in annotation['bbox']]
+            bbox[2] = 1 if bbox[2] == 0 else bbox[2]
+            bbox[3] = 1 if bbox[3] == 0 else bbox[3]
+            
+            masked_img = image * mask[:, :, None]
+            x, y, w, h = bbox
+            patch = masked_img[y:y+h, x:x+w]
+            patch_mask = mask[y:y+h, x:x+w]
+
+            category = self.lvis.load_cats([label])[0]
+            name = ', '.join([synonym.replace('_', ' ') for synonym in category['synonyms']]) 
+            name += f', {category["def"]}'
+
+            segments.append({
+                "patch": patch,
+                "mask": patch_mask,
+                'image_path': img_path,
+                'bbox': bbox, # 'x', 'y', 'width', 'height
+                "label": label,
+                "name": name,
+            })  
+
+        return segments
+
+
 class COCODataset:
     def __init__(self, coco_root, split):
         self.coco_root = coco_root
@@ -113,7 +188,6 @@ class COCODataset:
                         np.max(np.where(new_annotation['segmentation'])[0]) - np.min(np.where(new_annotation['segmentation'])[0]),  # height
                     ]
                     new_annotations.append(new_annotation)
-            break
         return new_annotations
 
     def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):

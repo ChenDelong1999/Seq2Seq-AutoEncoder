@@ -2,7 +2,7 @@
 from torchvision.datasets import CIFAR10, CIFAR100, STL10, MNIST
 from torchvision.transforms import ToTensor
 from .image_classification_dataset import SeqImgClsDataset
-from .segmentation_dataset import SA1BDataset, COCODataset, SeqMaskDataset
+from .segmentation_dataset import SA1BDataset, COCODataset, LVISDataset, SeqMaskDataset
 
 def get_dataset(args):
     if args.dataset=='cifar10':
@@ -71,14 +71,30 @@ def get_dataset(args):
         train_dataset = SeqMaskDataset(
             dataset=COCODataset(coco_root=args.data_dir, split='train'), 
             num_queries=args.num_queries, 
-            virtual_dataset_size=1500000, 
+            virtual_dataset_size=860001, 
             data_seq_length=args.img_size**2,
             min_resize_ratio=args.min_resize_ratio,
         )
         test_dataset = SeqMaskDataset(
             dataset=COCODataset(coco_root=args.data_dir, split='val'), 
             num_queries=args.num_queries, 
-            virtual_dataset_size=1500000, 
+            virtual_dataset_size=36781, 
+            data_seq_length=args.img_size**2,
+            min_resize_ratio=args.min_resize_ratio,
+        )
+    elif args.dataset=='lvis':
+        lvis_root, coco_root = args.data_dir.split(',')
+        train_dataset = SeqMaskDataset(
+            dataset=LVISDataset(lvis_root=lvis_root, coco_root=coco_root, split='train'), 
+            num_queries=args.num_queries, 
+            virtual_dataset_size=1270141, 
+            data_seq_length=args.img_size**2,
+            min_resize_ratio=args.min_resize_ratio,
+        )
+        test_dataset = SeqMaskDataset(
+            dataset=LVISDataset(lvis_root=lvis_root, coco_root=coco_root, split='val'), 
+            num_queries=args.num_queries, 
+            virtual_dataset_size=244707, 
             data_seq_length=args.img_size**2,
             min_resize_ratio=args.min_resize_ratio,
         )
@@ -86,14 +102,14 @@ def get_dataset(args):
         train_dataset = SeqMaskDataset(
             dataset=SA1BDataset(sa1b_root=args.data_dir), 
             num_queries=args.num_queries, 
-            virtual_dataset_size=1500000, 
+            virtual_dataset_size=200000000, 
             data_seq_length=args.img_size**2,
             min_resize_ratio=args.min_resize_ratio,
         )
         test_dataset = SeqMaskDataset(
             dataset=SA1BDataset(sa1b_root=args.data_dir), 
             num_queries=args.num_queries, 
-            virtual_dataset_size=1500000, 
+            virtual_dataset_size=200000000, 
             data_seq_length=args.img_size**2,
             min_resize_ratio=args.min_resize_ratio,
         )
