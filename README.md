@@ -64,13 +64,13 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python main.py --master_port '12345' \
 on A100/A800 80G GPU, [SA-1B], Xiaobing, large-scale
 ```bash
 # --dataset sa1b --data_dir '/home/dchenbs/workspace/datasets/sa1b' \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py --master_port '12345' \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py --master_port '12345'  --torch_compile \
     --dataset sa1b --data_dir '/cpfs/shared/research-llm/instruc_data_en/multimodal_instruct_tuning/sa1b/SA-1B/EXTRACTED' \
-    --img_size 64 --min_resize_ratio 0.8 \
+    --img_size 48 --min_resize_ratio 0.8 --size_warmup_steps 10000 --size_warmup_min 0.25 \
     --epochs 3 \
     --eval_interval 10000 --save_interval=10000 \
-    --batch_size=1 --gradient_accumulation_steps 8 --lr=1e-5  --n_generation=1 \
-    --d_model 1024 --encoder_layers 24 --decoder_layers 24 \
+    --batch_size=4 --num_workers 16 --gradient_accumulation_steps 2 --lr=1e-5  --n_generation=1 \
+    --d_model 768 --encoder_layers 24 --decoder_layers 24 \
     --encoder_attention_heads 8 --decoder_attention_heads 8 \
     --encoder_ffn_dim 4096 --decoder_ffn_dim 4096 \
     --num_queries 16 --d_latent 1024

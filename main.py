@@ -60,6 +60,7 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
                 writer.add_scalar(f'train/loss ({name})', value.item(), step)
 
             writer.add_scalar('train/lr', scheduler.get_lr()[0], step)
+            writer.add_scalar('train/data_seq_length_multiplier', dataloader.dataset.data_seq_length_multiplier, step)
             if step==0:
                 print(f'Input data: {data.shape}\n{data}')
 
@@ -70,6 +71,11 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
             print(f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)} ({int(i/len(dataloader)*100)}%), Global Step {step},\tLoss: {total_loss.item() * args.gradient_accumulation_steps:.7f}, LR: {scheduler.get_lr()[0]:.7f},\tStep Time: {step_time:.3f}s')
 
         scheduler.step()
+        if step < args.size_warmup_steps:
+            multiplier = max(step / args.size_warmup_steps, args.size_warmup_min)
+        else: 
+            multiplier = 1
+        dataloader.dataset.update_data_seq_length_multiplier(multiplier)
         step += 1
 
         if step!=0 and step % args.save_interval == 0 and args.rank == 0:   
@@ -114,7 +120,8 @@ def main(rank, world_size, args):
         batch_size= args.batch_size,
         shuffle=False, 
         num_workers=args.num_workers,
-        sampler=DistributedSampler(train_dataset, shuffle=True)
+        sampler=DistributedSampler(train_dataset, shuffle=True),
+        prefetch_factor=8,
         )
 
     # Set up the model and optimizer
@@ -149,7 +156,8 @@ def main(rank, world_size, args):
             print(f'Loaded pretrained model from {args.pretrained}')
     else:
         model = Seq2SeqAutoEncoderModel(config)
-    model = torch.compile(model)
+    if args.torch_compile:
+        model = torch.compile(model)
     model = DDP(model.to(device), device_ids=[rank], find_unused_parameters=False)
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
     # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(train_dataloader), epochs=args.epochs, pct_start=0.05)
@@ -157,15 +165,15 @@ def main(rank, world_size, args):
     if args.scheduler == 'cosine':
         # scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs*len(train_dataloader), eta_min=0)
         def lr_lambda(current_step: int):
-            if current_step < args.warmup_steps:
-                return float(current_step) / float(max(1, args.warmup_steps))
+            if current_step < args.lr_warmup_steps:
+                return float(current_step) / float(max(1, args.lr_warmup_steps))
             else:
-                return 0.5 * (1.0 + math.cos(math.pi * (current_step - args.warmup_steps) / (len(train_dataloader) * args.epochs - args.warmup_steps)))
+                return 0.5 * (1.0 + math.cos(math.pi * (current_step - args.lr_warmup_steps) / (len(train_dataloader) * args.epochs - args.lr_warmup_steps)))
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     elif args.scheduler == 'constant':
         def lr_lambda(current_step: int):
-            if current_step < args.warmup_steps:
-                return float(current_step) / float(max(1, args.warmup_steps))
+            if current_step < args.lr_warmup_steps:
+                return float(current_step) / float(max(1, args.lr_warmup_steps))
             else:
                 return 1
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
@@ -215,17 +223,25 @@ if __name__ == '__main__':
     # Define command line arguments
     parser = argparse.ArgumentParser(description='Seq2Seq-AutoEncoder')
     parser.add_argument('--master_port', type=str, default='12355', help='port to use for communication with master process')
+    parser.add_argument('--torch_compile', action='store_true', default=False, help='use torch.compile()')
+
+    # Optimization parameters
     parser.add_argument('--batch_size', type=int, default=8, help='batch size')
     parser.add_argument('--gradient_accumulation_steps', type=int, default=4, help='gradient accumulation')
+    parser.add_argument('--num_workers', type=int, default=2, help='maximum image size')
+    parser.add_argument('--lr', type=float, default=5e-4, help='learning rate')
+    parser.add_argument('--scheduler', type=str, default='constant', help='learning rate scheduler')
+    parser.add_argument('--lr_warmup_steps', type=int, default=1000, help='number of warmup steps for the learning rate scheduler')
+    parser.add_argument('--clip_grad_norm', type=float, default=1.0, help='gradient clipping norm')
 
     # Data parameters
     parser.add_argument('--dataset', type=str, default='cifar10') # choices=['cifar10', 'cifar100', 'stl10']
     parser.add_argument('--img_size', type=int, default=32, help='maximum image size')
     parser.add_argument('--data_dir', type=str, default='data/cache', help='path to dataset directory')
-    
     parser.add_argument('--min_resize_ratio', type=float, default=0.5, help='')
-    parser.add_argument('--num_workers', type=int, default=2, help='maximum image size')
-
+    parser.add_argument('--size_warmup_steps', type=int, default=0, help='number of warmup steps for the resize scheduler (curriculum learning)')
+    parser.add_argument('--size_warmup_min', type=float, default=0.5, help='')
+    
     # Model parameters
     parser.add_argument('--d_model', type=int, default=512, help='dimensionality of the model')
     parser.add_argument('--encoder_layers', type=int, default=8, help='number of encoder layers')
@@ -234,15 +250,10 @@ if __name__ == '__main__':
     parser.add_argument('--decoder_attention_heads', type=int, default=8, help='number of decoder attention heads')
     parser.add_argument('--encoder_ffn_dim', type=int, default=1024, help='dimensionality of the encoder feedforward network')
     parser.add_argument('--decoder_ffn_dim', type=int, default=1024, help='dimensionality of the decoder feedforward network')
-
     parser.add_argument('--num_queries', type=int, default=64, help='number of queries')
     parser.add_argument('--d_latent', type=int, default=512, help='dimensionality of the latent space')
 
     # Training parameters
-    parser.add_argument('--lr', type=float, default=5e-4, help='learning rate')
-    parser.add_argument('--scheduler', type=str, default='constant', help='learning rate scheduler')
-    parser.add_argument('--warmup_steps', type=int, default=1000, help='number of warmup steps for the learning rate scheduler')
-    parser.add_argument('--clip_grad_norm', type=float, default=1.0, help='gradient clipping norm')
     parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train')
     parser.add_argument('--log_interval', type=int, default=100, help='number of steps between each logging')
     parser.add_argument('--save_interval', type=int, default=1000, help='number of epochs between each checkpoint saving')

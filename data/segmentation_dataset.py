@@ -240,6 +240,7 @@ class SeqMaskDataset(Dataset):
                 'shape_encoding': 3,
                 'is_data': 4,
             }
+        self.data_seq_length_multiplier = 1
         self.sample_buffer = []
 
         self.min_resize_ratio = min_resize_ratio
@@ -266,10 +267,14 @@ class SeqMaskDataset(Dataset):
     def __len__(self):
         return self.virtual_dataset_size
 
+    def update_data_seq_length_multiplier(self, data_seq_length_multiplier):
+        self.data_seq_length_multiplier = data_seq_length_multiplier
+        
+
     def resize(self, segment):
         h, w = segment['patch'].shape[:2]
-        if h * w > self.data_seq_length:
-            ratio_to_maxlength = np.sqrt(self.data_seq_length / (h * w))
+        if h * w > (self.data_seq_length * self.data_seq_length_multiplier):
+            ratio_to_maxlength = np.sqrt((self.data_seq_length * self.data_seq_length_multiplier) / (h * w))
             ratio_random_resize = np.random.uniform(self.min_resize_ratio, 1.0)
             h = int(h * ratio_to_maxlength * ratio_random_resize)
             w = int(w * ratio_to_maxlength * ratio_random_resize)
