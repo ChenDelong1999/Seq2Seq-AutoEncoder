@@ -25,7 +25,7 @@ https://www.lvisdataset.org/dataset
 
 
 ```bash
-CUDA_VISIBLE_DEVICES=4,5 python main.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
     --model_config 'configs/model_config/model.json' \
     --training_config 'configs/training_config/sa1b.json'
 ```
