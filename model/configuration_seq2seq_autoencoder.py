@@ -146,7 +146,7 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
 
         # time series specific configuration
         self.data_seq_length = data_seq_length
-        self.model_seq_length = data_seq_length + num_queries
+        self.model_seq_length = data_seq_length + num_queries + 1
         self.loss = loss
         self.input_channels = input_channels
         self.num_queries = num_queries
