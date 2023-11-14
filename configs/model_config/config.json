@@ -1,0 +1,48 @@
+{
+  "_name_or_path": "/home/dchenbs/workspace/Seq2Seq-AutoEncoder/runs/Nov10_18-12-12_eez116-lvis-[model=0.37B-16queries]-[lr1e-05-bs16x1step-4gpu]/checkpoints/checkpoint_ep9_step195k",
+  "activation_dropout": 0.1,
+  "activation_function": "gelu",
+  "architectures": [
+    "Seq2SeqAutoEncoderModel"
+  ],
+  "attention_dropout": 0.1,
+  "cardinality": [
+    0
+  ],
+  "context_length": 1041,
+  "d_latent": 1024,
+  "d_model": 1024,
+  "decoder_attention_heads": 8,
+  "decoder_ffn_dim": 4096,
+  "decoder_layerdrop": 0.0,
+  "decoder_layers": 12,
+  "distribution_output": "non_probabilistic",
+  "dropout": 0.1,
+  "embedding_dimension": [
+    0
+  ],
+  "encoder_attention_heads": 8,
+  "encoder_ffn_dim": 4096,
+  "encoder_layerdrop": 0.0,
+  "encoder_layers": 12,
+  "feature_size": 6,
+  "init_std": 0.02,
+  "input_size": 5,
+  "is_encoder_decoder": true,
+  "lags_sequence": [
+    0
+  ],
+  "loss": "mse",
+  "model_type": "time_series_transformer",
+  "num_dynamic_real_features": 0,
+  "num_parallel_samples": 100,
+  "num_queries": 16,
+  "num_static_categorical_features": 0,
+  "num_static_real_features": 0,
+  "num_time_features": 1,
+  "prediction_length": 1041,
+  "scaling": "",
+  "torch_dtype": "float32",
+  "transformers_version": "4.35.0",
+  "use_cache": true
+}

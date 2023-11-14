@@ -1,20 +1,4 @@
-# coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
-# Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-""" PyTorch Time Series Transformer model."""
-
+# Modified from https://huggingface.co/docs/transformers/main/model_doc/time_series_transformer
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -30,17 +14,16 @@ from transformers.modeling_outputs import (
     Seq2SeqTSPredictionOutput,
 )
 from transformers.modeling_utils import PreTrainedModel
-from transformers.time_series_utils import NegativeBinomialOutput, NormalOutput, StudentTOutput
-from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
-from .configuration_time_series_transformer import Seq2SeqAutoEncoderConfig
+from transformers.utils import logging
+from .configuration_seq2seq_autoencoder import Seq2SeqAutoEncoderConfig
 
 
 logger = logging.get_logger(__name__)
 
-_CONFIG_FOR_DOC = "TimeSeriesTransformerConfig"
+_CONFIG_FOR_DOC = "Seq2SeqAutoEncoderConfig"
 
 
-TIME_SERIES_TRANSFORMER_PRETRAINED_MODEL_ARCHIVE_LIST = [
+SEQ2SEQ_AUTOENCODER_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "huggingface/time-series-transformer-tourism-monthly",
     # See all TimeSeriesTransformer models at https://huggingface.co/models?filter=time_series_transformer
 ]
@@ -80,7 +63,7 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
 
 
 # Copied from transformers.models.marian.modeling_marian.MarianSinusoidalPositionalEmbedding with Marian->TimeSeries
-class TimeSeriesSinusoidalPositionalEmbedding(nn.Embedding):
+class SinusoidalPositionalEmbedding(nn.Embedding):
     """This module produces sinusoidal positional embeddings of any length."""
 
     def __init__(self, num_positions: int, embedding_dim: int, padding_idx: Optional[int] = None) -> None:
@@ -114,17 +97,8 @@ class TimeSeriesSinusoidalPositionalEmbedding(nn.Embedding):
         return super().forward(positions)
 
 
-class TimeSeriesValueEmbedding(nn.Module):
-    def __init__(self, feature_size, d_model):
-        super().__init__()
-        self.value_projection = nn.Linear(in_features=feature_size, out_features=d_model, bias=False)
-
-    def forward(self, x):
-        return self.value_projection(x)
-
-
 # Copied from transformers.models.bart.modeling_bart.BartAttention with Bart->TimeSeriesTransformer
-class TimeSeriesTransformerAttention(nn.Module):
+class TransformerAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
     def __init__(
@@ -312,11 +286,11 @@ class TimeSeriesTransformerAttention(nn.Module):
         return query_layer, key_layer
 
 # Copied from transformers.models.bart.modeling_bart.BartEncoderLayer with Bart->TimeSeriesTransformer
-class TimeSeriesTransformerEncoderLayer(nn.Module):
+class TransformerEncoderLayer(nn.Module):
     def __init__(self, config: Seq2SeqAutoEncoderConfig):
         super().__init__()
         self.embed_dim = config.d_model
-        self.self_attn = TimeSeriesTransformerAttention(
+        self.self_attn = TransformerAttention(
             embed_dim=self.embed_dim,
             num_heads=config.encoder_attention_heads,
             dropout=config.attention_dropout,
@@ -383,12 +357,12 @@ class TimeSeriesTransformerEncoderLayer(nn.Module):
 
 
 # Copied from transformers.models.bart.modeling_bart.BartDecoderLayer with Bart->TimeSeriesTransformer
-class TimeSeriesTransformerDecoderLayer(nn.Module):
+class TransformerDecoderLayer(nn.Module):
     def __init__(self, config: Seq2SeqAutoEncoderConfig):
         super().__init__()
         self.embed_dim = config.d_model
 
-        self.self_attn = TimeSeriesTransformerAttention(
+        self.self_attn = TransformerAttention(
             embed_dim=self.embed_dim,
             num_heads=config.decoder_attention_heads,
             dropout=config.attention_dropout,
@@ -399,7 +373,7 @@ class TimeSeriesTransformerDecoderLayer(nn.Module):
         self.activation_dropout = config.activation_dropout
 
         self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
-        self.encoder_attn = TimeSeriesTransformerAttention(
+        self.encoder_attn = TransformerAttention(
             self.embed_dim,
             config.decoder_attention_heads,
             dropout=config.attention_dropout,
@@ -503,7 +477,7 @@ class TimeSeriesTransformerDecoderLayer(nn.Module):
         return outputs
 
 
-class TimeSeriesTransformerPreTrainedModel(PreTrainedModel):
+class Seq2seqAutoencoderPreTrainedModel(PreTrainedModel):
     config_class = Seq2SeqAutoEncoderConfig
     base_model_prefix = "model"
     main_input_name = "past_values"
@@ -515,7 +489,7 @@ class TimeSeriesTransformerPreTrainedModel(PreTrainedModel):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.bias is not None:
                 module.bias.data.zero_()
-        elif isinstance(module, TimeSeriesSinusoidalPositionalEmbedding):
+        elif isinstance(module, SinusoidalPositionalEmbedding):
             pass
         elif isinstance(module, nn.Embedding):
             module.weight.data.normal_(mean=0.0, std=std)
@@ -523,17 +497,17 @@ class TimeSeriesTransformerPreTrainedModel(PreTrainedModel):
                 module.weight.data[module.padding_idx].zero_()
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (TimeSeriesTransformerDecoder, TimeSeriesTransformerEncoder)):
+        if isinstance(module, (SeqDecoder, SeqEncoder)):
             module.gradient_checkpointing = value
 
 
-class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
+class SeqEncoder(Seq2seqAutoencoderPreTrainedModel):
     """
     Transformer encoder consisting of *config.encoder_layers* self attention layers. Each layer is a
-    [`TimeSeriesTransformerEncoderLayer`].
+    [`TransformerEncoderLayer`].
 
     Args:
-        config: TimeSeriesTransformerConfig
+        config: Seq2SeqAutoEncoderConfig
     """
 
     def __init__(self, config: Seq2SeqAutoEncoderConfig, learnable_positional_embedding):
@@ -544,14 +518,14 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
         if config.prediction_length is None:
             raise ValueError("The `prediction_length` config needs to be specified.")
 
-        self.value_embedding = TimeSeriesValueEmbedding(feature_size=config.input_size, d_model=config.d_model)
+        self.value_embedding = nn.Linear(in_features=config.input_size, out_features=config.d_model, bias=False)
         self.learnable_positional_embedding = learnable_positional_embedding
-        self.embed_positions = TimeSeriesSinusoidalPositionalEmbedding(
+        self.embed_positions = SinusoidalPositionalEmbedding(
             config.context_length,
             config.d_model,
         )
 
-        self.layers = nn.ModuleList([TimeSeriesTransformerEncoderLayer(config) for _ in range(config.encoder_layers)])
+        self.layers = nn.ModuleList([TransformerEncoderLayer(config) for _ in range(config.encoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
         self.quries = nn.Parameter(torch.randn(config.num_queries, config.d_model))
@@ -680,13 +654,13 @@ class TimeSeriesTransformerEncoder(TimeSeriesTransformerPreTrainedModel):
         )
 
 
-class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
+class SeqDecoder(Seq2seqAutoencoderPreTrainedModel):
     """
     Transformer decoder consisting of *config.decoder_layers* layers. Each layer is a
-    [`TimeSeriesTransformerDecoderLayer`]
+    [`TransformerDecoderLayer`]
 
     Args:
-        config: TimeSeriesTransformerConfig
+        config: Seq2SeqAutoEncoderConfig
     """
 
     def __init__(self, config: Seq2SeqAutoEncoderConfig, learnable_positional_embedding):
@@ -696,14 +670,14 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
         if config.prediction_length is None:
             raise ValueError("The `prediction_length` config needs to be specified.")
 
-        self.value_embedding = TimeSeriesValueEmbedding(feature_size=config.input_size, d_model=config.d_model)
+        self.value_embedding = nn.Linear(in_features=config.input_size, out_features=config.d_model, bias=False)
         self.learnable_positional_embedding = learnable_positional_embedding
-        self.embed_positions = TimeSeriesSinusoidalPositionalEmbedding(
+        self.embed_positions = SinusoidalPositionalEmbedding(
             config.prediction_length,
             config.d_model,
         )
 
-        self.layers = nn.ModuleList([TimeSeriesTransformerDecoderLayer(config) for _ in range(config.decoder_layers)])
+        self.layers = nn.ModuleList([TransformerDecoderLayer(config) for _ in range(config.decoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
         self.gradient_checkpointing = False
@@ -827,7 +801,7 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
 
         hidden_states = self.value_embedding(inputs_embeds)
 
-        embed_pos = self.learnable_positional_embedding.weight[:input_shape[-1], :].unsqueeze(0)# + self.sin_positional_embedding(inputs_embeds.size(), past_key_values_length=self.config.context_length)
+        embed_pos = self.learnable_positional_embedding.weight[:input_shape[-1], :].unsqueeze(0)
         hidden_states = self.layernorm_embedding(hidden_states + embed_pos)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
@@ -931,24 +905,20 @@ class TimeSeriesTransformerDecoder(TimeSeriesTransformerPreTrainedModel):
         )
 
 
-class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
+class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
     def __init__(self, config: Seq2SeqAutoEncoderConfig):
         super().__init__(config)        
         
+        # learnable absolute prositional embedding initialized from sin embedding
         self.learnable_positional_embedding = nn.Embedding(config.context_length, config.d_model)
-        
-        sin_positional_embedding = TimeSeriesSinusoidalPositionalEmbedding(
-            config.context_length + config.prediction_length, config.d_model
-        )
+        sin_positional_embedding = SinusoidalPositionalEmbedding(config.context_length + config.prediction_length, config.d_model)
         self.learnable_positional_embedding.weight = nn.Parameter(sin_positional_embedding(self.learnable_positional_embedding.weight.unsqueeze(0).size()))
 
-        self.encoder = TimeSeriesTransformerEncoder(config, self.learnable_positional_embedding)
-        self.decoder = TimeSeriesTransformerDecoder(config, self.learnable_positional_embedding)
+        # learnable positional embedding is shared between encoder and decoder
+        self.encoder = SeqEncoder(config, self.learnable_positional_embedding)
+        self.decoder = SeqDecoder(config, self.learnable_positional_embedding)
 
         self.bottleneck_projector = torch.nn.Linear(config.d_model*config.num_queries, config.d_latent, bias=False) 
-        # encoder_bottleneck_projector.weight (128, 8192) i.e. (d_latent, d_model*num_queries)
-
-        # self.decoder_bottleneck_projector = torch.nn.Linear(config.d_latent, config.d_model*config.num_queries)
         
         self.output_head = torch.nn.Sequential(
             torch.nn.Linear(config.d_model, config.input_size),
@@ -974,12 +944,7 @@ class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
         return latents
     
     def decode(self, latents, future_values):
-
-        # latents = self.decoder_bottleneck_projector(latents)
-
-        # latents.shape = [batch_size, d_latent] 
         latents = latents @ self.bottleneck_projector.weight # -> [batch_size, d_model*num_queries]
-
         latents = latents.reshape(latents.shape[0], self.config.num_queries, self.config.d_model)
         decoder_outputs = self.decoder(inputs_embeds=future_values, encoder_hidden_states=latents)
         return decoder_outputs
@@ -988,15 +953,9 @@ class Seq2SeqAutoEncoderModel(TimeSeriesTransformerPreTrainedModel):
         self,
         data: torch.Tensor,
     ) -> Union[Seq2SeqTSModelOutput, Tuple]:
-    
         encoder_latents = self.encode(data)
-        # print(f'encoder_latents.shape: {encoder_latents.shape}')
-
         decoder_outputs = self.decode(encoder_latents, data)
-        # print(f'decoder_outputs.last_hidden_state.shape: {decoder_outputs.last_hidden_state.shape}')
-
         prediction = self.output_head(decoder_outputs[0])
-
         return prediction
 
     @torch.no_grad()

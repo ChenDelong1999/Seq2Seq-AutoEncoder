@@ -48,7 +48,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python main.py \
 on A100/A800 80G GPU, [COCO/LVIS], HKUST, small-scale
 ```bash
 # --dataset coco --data_dir '/home/dchenbs/workspace/datasets/coco2017' \
-CUDA_VISIBLE_DEVICES=0,1,2,3 python main.py --master_port '12345' \
+CUDA_VISIBLE_DEVICES=0,1,2,3 python main.py --master_port '12345' --torch_compile \
     --dataset lvis --data_dir '/home/dchenbs/workspace/datasets/lvis,/home/dchenbs/workspace/datasets/coco2017' \
     --img_size 32 --min_resize_ratio 0.8 \
     --epochs 10 \

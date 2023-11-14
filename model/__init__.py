@@ -1,24 +1,12 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Modified from https://huggingface.co/docs/transformers/main/model_doc/time_series_transformer
 from typing import TYPE_CHECKING
 
 from transformers.utils import OptionalDependencyNotAvailable, _LazyModule, is_torch_available
 
 
 _import_structure = {
-    "configuration_time_series_transformer": [
-        "TIME_SERIES_TRANSFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP",
+    "configuration_seq2seq_autoencoder": [
+        "SEQ2SEQ_AUTOENCODER_PRETRAINED_CONFIG_ARCHIVE_MAP",
         "Seq2SeqAutoEncoderConfig",
     ],
 }
@@ -29,17 +17,16 @@ try:
 except OptionalDependencyNotAvailable:
     pass
 else:
-    _import_structure["modeling_time_series_transformer"] = [
-        "TIME_SERIES_TRANSFORMER_PRETRAINED_MODEL_ARCHIVE_LIST",
-        "TimeSeriesTransformerForPrediction",
+    _import_structure["modeling_seq2seq_autoencoder"] = [
+        "SEQ2SEQ_AUTOENCODER_PRETRAINED_MODEL_ARCHIVE_LIST",
         "Seq2SeqAutoEncoderModel",
-        "TimeSeriesTransformerPreTrainedModel",
+        "Seq2SeqAutoEncoderPreTrainedModel",
     ]
 
 
 if TYPE_CHECKING:
-    from .configuration_time_series_transformer import (
-        TIME_SERIES_TRANSFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP,
+    from .configuration_seq2seq_autoencoder import (
+        SEQ2SEQ_AUTOENCODER_PRETRAINED_CONFIG_ARCHIVE_MAP,
         Seq2SeqAutoEncoderConfig,
     )
 
@@ -49,11 +36,11 @@ if TYPE_CHECKING:
     except OptionalDependencyNotAvailable:
         pass
     else:
-        from .modeling_time_series_transformer import (
-            TIME_SERIES_TRANSFORMER_PRETRAINED_MODEL_ARCHIVE_LIST,
+        from .modeling_seq2seq_autoencoder import (
+            SEQ2SEQ_AUTOENCODER_PRETRAINED_MODEL_ARCHIVE_LIST,
             TimeSeriesTransformerForPrediction,
             Seq2SeqAutoEncoderModel,
-            TimeSeriesTransformerPreTrainedModel,
+            Seq2seqAutoencoderPreTrainedModel,
         )
 
 else:
