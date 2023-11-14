@@ -30,15 +30,14 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
 
     model.train()
     step = epoch * len(dataloader)
-    start_time = time.time()
-    start_time_epoch = start_time
+    start_time_epoch = time.time()
     scaler = GradScaler()
 
     for i, (data, _) in enumerate(dataloader):
+        start_time = time.time()
         data = data.to(device)
 
         with autocast():
-            # loss =  model(data)['loss']
             prediction = model(data)
             loss = seq2seq_autoencoder_loss(prediction, data, args.channel_info)
             total_loss = sum(loss.values())
@@ -58,6 +57,10 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
             writer.add_scalar('train/loss (total)', total_loss.item() * args.gradient_accumulation_steps, step)
             for name, value in loss.items():
                 writer.add_scalar(f'train/loss ({name})', value.item(), step)
+                
+            step_time = time.time() - start_time
+            start_time = time.time()
+            writer.add_scalar('train/step_time', step_time, step)
 
             writer.add_scalar('train/lr', scheduler.get_lr()[0], step)
             writer.add_scalar('train/data_seq_length_multiplier', dataloader.dataset.data_seq_length_multiplier, step)
@@ -65,10 +68,10 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
                 print(f'Input data: {data.shape}\n{data}')
 
         if step % args.log_interval == 0 and args.rank == 0:
-            step_time = (time.time() - start_time) / args.log_interval
-            start_time = time.time()
-            writer.add_scalar('train/step_time', step_time, step)
-            print(f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)} ({int(i/len(dataloader)*100)}%), Global Step {step},\tLoss: {total_loss.item() * args.gradient_accumulation_steps:.7f}, LR: {scheduler.get_lr()[0]:.7f},\tStep Time: {step_time:.3f}s')
+            log = f'Epoch {epoch+1}/{args.epochs}, Step {i}/{len(dataloader)} ({int(i/len(dataloader)*100)}%), Global Step {step}, '
+            log += f'Loss: {total_loss.item() * args.gradient_accumulation_steps:.7f}, LR: {scheduler.get_lr()[0]:.7f}, '
+            log += f'Step Time: {step_time:.3f}s'
+            print(log)
 
         scheduler.step()
         if step < args.size_warmup_steps:
@@ -109,7 +112,6 @@ def main(rank, world_size, args):
         model = Seq2SeqAutoEncoderModel.from_pretrained(args.model_config)
 
     if args.rank == 0:
-
         print(model)
         print(model.config)
         print(get_params_count_summary(model))
@@ -170,8 +172,9 @@ def main(rank, world_size, args):
             print(f'\t{k}: {v}')
         print('='*64)
 
-        total_params = round(sum(p.numel() for p in model.parameters()) / 1e9 ,2)
-        comment = f'-{args.dataset}-[model={total_params}B-{args.num_queries}queries]-[lr{args.lr}-bs{args.batch_size}x{args.gradient_accumulation_steps}step-{world_size}gpu]'
+        total_params = round(sum(p.numel() for p in model.parameters()) / 1e9, 3)
+        total_params = f'{int(total_params*1000)}M' if total_params < 1 else f'{total_params:.1f}B'
+        comment = f'-{args.dataset.upper()}-[{total_params}B-{args.num_queries}queries-{args.data_seq_length}]-[lr{args.lr}-bs{args.batch_size}x{args.gradient_accumulation_steps}step-{world_size}gpu]'
         if args.eval_only:
             comment += '-eval_only'
         writer = SummaryWriter(comment=comment)

@@ -1,25 +1,22 @@
 {
-  "_name_or_path": "configs/model_config/24layers_1024d_16queries.json",
   "model_type": "sequence_to_sequence_autoencoder",
-  
-  "architectures": [
-    "Seq2SeqAutoEncoderModel"
-  ],
+  "architectures": ["Seq2SeqAutoEncoderModel"],
+
   "data_seq_length": 1024,
-  "d_latent": 1024,
-  "d_model": 1024,
+  "d_latent": 768,
+  "d_model": 768,
   "input_channels": 5,
   "num_queries": 16,
 
-  "decoder_attention_heads": 8,
+  "decoder_attention_heads": 12,
   "decoder_ffn_dim": 4096,
   "decoder_layerdrop": 0.0,
-  "decoder_layers": 12,
+  "decoder_layers": 16,
 
-  "encoder_attention_heads": 8,
+  "encoder_attention_heads": 12,
   "encoder_ffn_dim": 4096,
   "encoder_layerdrop": 0.0,
-  "encoder_layers": 12,
+  "encoder_layers": 16,
 
   "attention_dropout": 0.1,
   "activation_dropout": 0.1,
