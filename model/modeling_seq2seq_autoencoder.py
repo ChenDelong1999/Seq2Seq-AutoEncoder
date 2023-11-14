@@ -515,13 +515,11 @@ class SeqEncoder(Seq2seqAutoencoderPreTrainedModel):
 
         self.dropout = config.dropout
         self.layerdrop = config.encoder_layerdrop
-        if config.prediction_length is None:
-            raise ValueError("The `prediction_length` config needs to be specified.")
 
-        self.value_embedding = nn.Linear(in_features=config.input_size, out_features=config.d_model, bias=False)
+        self.value_embedding = nn.Linear(in_features=config.input_channels, out_features=config.d_model, bias=False)
         self.learnable_positional_embedding = learnable_positional_embedding
         self.embed_positions = SinusoidalPositionalEmbedding(
-            config.context_length,
+            config.model_seq_length,
             config.d_model,
         )
 
@@ -667,13 +665,11 @@ class SeqDecoder(Seq2seqAutoencoderPreTrainedModel):
         super().__init__(config)
         self.dropout = config.dropout
         self.layerdrop = config.decoder_layerdrop
-        if config.prediction_length is None:
-            raise ValueError("The `prediction_length` config needs to be specified.")
 
-        self.value_embedding = nn.Linear(in_features=config.input_size, out_features=config.d_model, bias=False)
+        self.value_embedding = nn.Linear(in_features=config.input_channels, out_features=config.d_model, bias=False)
         self.learnable_positional_embedding = learnable_positional_embedding
         self.embed_positions = SinusoidalPositionalEmbedding(
-            config.prediction_length,
+            config.model_seq_length,
             config.d_model,
         )
 
@@ -910,8 +906,8 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
         super().__init__(config)        
         
         # learnable absolute prositional embedding initialized from sin embedding
-        self.learnable_positional_embedding = nn.Embedding(config.context_length, config.d_model)
-        sin_positional_embedding = SinusoidalPositionalEmbedding(config.context_length + config.prediction_length, config.d_model)
+        self.learnable_positional_embedding = nn.Embedding(config.model_seq_length, config.d_model)
+        sin_positional_embedding = SinusoidalPositionalEmbedding(config.model_seq_length + config.model_seq_length, config.d_model)
         self.learnable_positional_embedding.weight = nn.Parameter(sin_positional_embedding(self.learnable_positional_embedding.weight.unsqueeze(0).size()))
 
         # learnable positional embedding is shared between encoder and decoder
@@ -921,12 +917,16 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
         self.bottleneck_projector = torch.nn.Linear(config.d_model*config.num_queries, config.d_latent, bias=False) 
         
         self.output_head = torch.nn.Sequential(
-            torch.nn.Linear(config.d_model, config.input_size),
+            torch.nn.Linear(config.d_model, config.input_channels),
             torch.nn.Sigmoid()
         )
 
         if config.loss == "mse":
             self.loss = torch.nn.MSELoss()
+        elif config.loss == "mae":
+            self.loss = torch.nn.L1Loss()
+        else:
+            raise ValueError(f"loss {config.loss} not supported")
 
         self.post_init()
 
@@ -964,10 +964,10 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
         encoder_latents
     ) -> SampleTSPredictionOutput:    
 
-        decoder_input = torch.zeros(1, 1, self.config.input_size, device=encoder_latents.device)
+        decoder_input = torch.zeros(1, 1, self.config.input_channels, device=encoder_latents.device)
 
         # while not stop:
-        for step in range(self.config.prediction_length-1):
+        for step in range(self.config.model_seq_length-1):
             decoder_outputs = self.decode(latents=encoder_latents, future_values=decoder_input)
             prediction = self.output_head(decoder_outputs.last_hidden_state)
             decoder_input = torch.cat((decoder_input, prediction[:, -1:, :]), dim=1)

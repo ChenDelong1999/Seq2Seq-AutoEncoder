@@ -72,14 +72,14 @@ def get_dataset(args):
             dataset=COCODataset(coco_root=args.data_dir, split='train'), 
             num_queries=args.num_queries, 
             virtual_dataset_size=860001, 
-            data_seq_length=args.img_size**2,
+            data_seq_length=args.data_seq_length,
             min_resize_ratio=args.min_resize_ratio,
         )
         test_dataset = SeqMaskDataset(
             dataset=COCODataset(coco_root=args.data_dir, split='val'), 
             num_queries=args.num_queries, 
             virtual_dataset_size=36781, 
-            data_seq_length=args.img_size**2,
+            data_seq_length=args.data_seq_length,
             min_resize_ratio=args.min_resize_ratio,
         )
     elif args.dataset=='lvis':
@@ -88,14 +88,14 @@ def get_dataset(args):
             dataset=LVISDataset(lvis_root=lvis_root, coco_root=coco_root, split='train'), 
             num_queries=args.num_queries, 
             virtual_dataset_size=1270141, 
-            data_seq_length=args.img_size**2,
+            data_seq_length=args.data_seq_length,
             min_resize_ratio=args.min_resize_ratio,
         )
         test_dataset = SeqMaskDataset(
             dataset=LVISDataset(lvis_root=lvis_root, coco_root=coco_root, split='val'), 
             num_queries=args.num_queries, 
             virtual_dataset_size=244707, 
-            data_seq_length=args.img_size**2,
+            data_seq_length=args.data_seq_length,
             min_resize_ratio=args.min_resize_ratio,
         )
     elif args.dataset=='sa1b':
@@ -103,14 +103,14 @@ def get_dataset(args):
             dataset=SA1BDataset(sa1b_root=args.data_dir), 
             num_queries=args.num_queries, 
             virtual_dataset_size=200000000, 
-            data_seq_length=args.img_size**2,
+            data_seq_length=args.data_seq_length,
             min_resize_ratio=args.min_resize_ratio,
         )
         test_dataset = SeqMaskDataset(
             dataset=SA1BDataset(sa1b_root=args.data_dir), 
             num_queries=args.num_queries, 
             virtual_dataset_size=200000000, 
-            data_seq_length=args.img_size**2,
+            data_seq_length=args.data_seq_length,
             min_resize_ratio=args.min_resize_ratio,
         )
         

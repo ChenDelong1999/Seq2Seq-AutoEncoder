@@ -31,7 +31,7 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
         prediction_length (`int`):
             The prediction length for the decoder. In other words, the prediction horizon of the model. This value is
             typically dictated by the dataset and we recommend to set it appropriately.
-        context_length (`int`, *optional*, defaults to `prediction_length`):
+        model_seq_length (`int`, *optional*, defaults to `prediction_length`):
             The context length for the encoder. If `None`, the context length will be the same as the
             `prediction_length`.
         distribution_output (`string`, *optional*, defaults to `"student_t"`):
@@ -39,7 +39,7 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
         loss (`string`, *optional*, defaults to `"nll"`):
             The loss function for the model corresponding to the `distribution_output` head. For parametric
             distributions it is the negative log likelihood (nll) - which currently is the only supported one.
-        input_size (`int`, *optional*, defaults to 1):
+        input_channels (`int`, *optional*, defaults to 1):
             The size of the target variable which by default is 1 for univariate targets. Would be > 1 in case of
             multivariate targets.
         scaling (`string` or `bool`, *optional* defaults to `"mean"`):
@@ -112,7 +112,7 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
     >>> # Accessing the model configuration
     >>> configuration = model.config
     ```"""
-    model_type = "time_series_transformer"
+    model_type = "sequence_to_sequence_autoencoder"
     attribute_map = {
         "hidden_size": "d_model",
         "num_attention_heads": "encoder_attention_heads",
@@ -121,26 +121,15 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
 
     def __init__(
         self,
-        prediction_length: Optional[int] = None,
-        context_length: Optional[int] = None,
-        distribution_output: str = "student_t",
-        loss: str = "nll",
-        input_size: int = 1,
-        lags_sequence: List[int] = [1, 2, 3, 4, 5, 6, 7],
-        scaling: Optional[Union[str, bool]] = "mean",
-        num_dynamic_real_features: int = 0,
-        num_static_categorical_features: int = 0,
-        num_static_real_features: int = 0,
-        num_time_features: int = 0,
-        cardinality: Optional[List[int]] = None,
-        embedding_dimension: Optional[List[int]] = None,
+        data_seq_length: int = 1024,
+        loss: str = "mse",
+        input_channels: int = 1,
         encoder_ffn_dim: int = 32,
         decoder_ffn_dim: int = 32,
         encoder_attention_heads: int = 2,
         decoder_attention_heads: int = 2,
         encoder_layers: int = 2,
         decoder_layers: int = 2,
-        is_encoder_decoder: bool = True,
         activation_function: str = "gelu",
         d_model: int = 64,
         dropout: float = 0.1,
@@ -148,48 +137,22 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
         decoder_layerdrop: float = 0.1,
         attention_dropout: float = 0.1,
         activation_dropout: float = 0.1,
-        num_parallel_samples: int = 100,
         init_std: float = 0.02,
-        use_cache=True,
         num_queries: int = 64,
         d_latent: int = 1024,
         **kwargs,
     ):
+        # assert data_length is not None and int(data_length ** 0.5) ** 2 == data_length, "data_length must be a square number"
+
         # time series specific configuration
-        self.prediction_length = prediction_length
-        self.context_length = context_length or prediction_length
-        self.distribution_output = distribution_output
+        self.data_seq_length = data_seq_length
+        self.model_seq_length = data_seq_length + num_queries
         self.loss = loss
-        self.input_size = input_size
-        self.num_time_features = num_time_features
-        self.lags_sequence = lags_sequence
-        self.scaling = scaling
-        self.num_dynamic_real_features = num_dynamic_real_features
-        self.num_static_real_features = num_static_real_features
-        self.num_static_categorical_features = num_static_categorical_features
+        self.input_channels = input_channels
         self.num_queries = num_queries
         self.d_latent = d_latent
 
-        if cardinality and num_static_categorical_features > 0:
-            if len(cardinality) != num_static_categorical_features:
-                raise ValueError(
-                    "The cardinality should be a list of the same length as `num_static_categorical_features`"
-                )
-            self.cardinality = cardinality
-        else:
-            self.cardinality = [0]
-        if embedding_dimension and num_static_categorical_features > 0:
-            if len(embedding_dimension) != num_static_categorical_features:
-                raise ValueError(
-                    "The embedding dimension should be a list of the same length as `num_static_categorical_features`"
-                )
-            self.embedding_dimension = embedding_dimension
-        else:
-            self.embedding_dimension = [min(50, (cat + 1) // 2) for cat in self.cardinality]
-        self.num_parallel_samples = num_parallel_samples
-
         # Transformer architecture configuration
-        self.feature_size = input_size * len(lags_sequence) + self._number_of_features
         self.d_model = d_model
         self.encoder_attention_heads = encoder_attention_heads
         self.decoder_attention_heads = decoder_attention_heads
@@ -207,24 +170,14 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
         self.activation_function = activation_function
         self.init_std = init_std
 
-        self.use_cache = use_cache
+        self.use_cache = True
 
-        super().__init__(is_encoder_decoder=is_encoder_decoder, **kwargs)
+        super().__init__(is_encoder_decoder=True, **kwargs)
 
     @property
     def _number_of_features(self) -> int:
-        if self.scaling in ["mean", "std"]:
-            return (
-                sum(self.embedding_dimension)
-                + self.num_dynamic_real_features
-                + self.num_time_features
-                + self.num_static_real_features
-                + self.input_size * 2  # the log1p(abs(loc)) and log(scale) features
-            )
-        else:
-            return (
-                sum(self.embedding_dimension)
-                + self.num_dynamic_real_features
-                + self.num_time_features
-                + self.num_static_real_features
-            )
+        return (
+            sum(self.embedding_dimension)
+            + self.num_time_features
+            + self.num_static_real_features
+        )

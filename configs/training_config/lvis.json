@@ -1,0 +1,26 @@
+{
+    "master_port": "12345",
+    "torch_compile": false,
+
+    "batch_size": 16,
+    "gradient_accumulation_steps": 1,
+    "num_workers": 2,
+    "lr": 1e-05,
+    "scheduler": "constant",
+    "lr_warmup_steps": 1000,
+    "clip_grad_norm": 1.0,
+
+    "dataset": "lvis",
+    "data_dir": "/home/dchenbs/workspace/datasets/lvis,/home/dchenbs/workspace/datasets/coco2017",
+    "min_resize_ratio": 0.8,
+    "size_warmup_steps": 0,
+    "size_warmup_min": 0.5,
+    
+    "epochs": 10,
+    "log_interval": 100,
+    "save_interval": 5000,
+    "eval_interval": 5000,
+    "eval_only": false,
+    "n_generation": 1,
+    "n_tsne_samples": 2000
+}

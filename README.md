@@ -75,3 +75,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py --master_port '12345'  --tor
     --encoder_ffn_dim 4096 --decoder_ffn_dim 4096 \
     --num_queries 16 --d_latent 1024
 ```
+
+# use config
+on A100/A800 80G GPU, [COCO/LVIS], HKUST, small-scale
+```bash
+# --dataset coco --data_dir '/home/dchenbs/workspace/datasets/coco2017' \
+CUDA_VISIBLE_DEVICES=4,5 python main.py \
+    --model_config 'configs/model_config/config.json' \
+    --training_config 'configs/training_config/lvis.json'
+```
