@@ -1,6 +1,6 @@
 # Modified from https://huggingface.co/docs/transformers/main/model_doc/time_series_transformer
 from typing import List, Optional, Tuple, Union
-
+from tqdm import tqdm
 import numpy as np
 import torch
 from torch import nn
@@ -961,13 +961,14 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
     @torch.no_grad()
     def generate(
         self,
-        encoder_latents
+        encoder_latents,
+        show_progress_bar=False
     ) -> SampleTSPredictionOutput:    
 
-        decoder_input = torch.zeros(1, 1, self.config.input_channels, device=encoder_latents.device)
+        decoder_input = torch.zeros(encoder_latents.shape[0], 1, self.config.input_channels, device=encoder_latents.device)
 
-        # while not stop:
-        for step in range(self.config.model_seq_length-1):
+        range_object = tqdm(range(self.config.model_seq_length-1)) if show_progress_bar else range(self.config.model_seq_length-1)
+        for step in range_object:
             decoder_outputs = self.decode(latents=encoder_latents, future_values=decoder_input)
             prediction = self.output_head(decoder_outputs.last_hidden_state)
             decoder_input = torch.cat((decoder_input, prediction[:, -1:, :]), dim=1)

@@ -172,7 +172,7 @@ class Seq2SeqAutoEncoderConfig(PretrainedConfig):
 
         self.use_cache = True
 
-        super().__init__(is_encoder_decoder=True, **kwargs)
+        super().__init__(**kwargs)
 
     @property
     def _number_of_features(self) -> int:
