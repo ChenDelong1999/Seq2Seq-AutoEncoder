@@ -2,7 +2,7 @@
 from torchvision.datasets import CIFAR10, CIFAR100, STL10, MNIST
 from torchvision.transforms import ToTensor
 from .image_classification_dataset import SeqImgClsDataset
-from .segmentation_dataset import SA1BDataset, COCODataset, LVISDataset, SeqMaskDataset
+from .segmentation_dataset import SA1BDataset, COCODataset, LVISDataset, SeqMaskDataset, V3DetDataset, VisualGenomeDataset
 
 def get_dataset(args):
     if args.dataset=='cifar10':

@@ -19,6 +19,7 @@ import random
 
 class SA1BDataset:
     def __init__(self, sa1b_root):
+        self.dataset_name = 'sa1b'
         self.sa1b_root = sa1b_root
         self.img_ids = []
         
@@ -80,15 +81,108 @@ class SA1BDataset:
                 "mask": patch_mask,
                 'image_path': img_path,
                 'bbox': bbox, # 'x', 'y', 'width', 'height
-                "label": 0,
                 "name": "",
+                "caption": "",
             })  
 
         return segments
 
 
+class VisualGenomeDataset:
+    def __init__(self, visual_genome_root, split):
+        self.dataset_name = 'visual_genome'
+        self.visual_genome_root = visual_genome_root
+        self.split = split
+        self.annotations_path = os.path.join(visual_genome_root, f'visual_genome_1117_sam_mask.jsonl')
+        self.file = open(self.annotations_path, 'r')
+
+    def load_segments_from_one_image(self):
+        line = self.file.readline()
+        if not line:
+            self.file.seek(0)
+            line = self.file.readline()
+        line = json.loads(line)
+
+        image_path = os.path.join(self.visual_genome_root, line['image'])
+        image = np.array(Image.open(image_path).convert('RGB'))
+        objects = line['objects']
+        segments = []
+        for obj in objects:
+            mask = decode(obj['mask'])
+            bbox = [int(b) for b in obj['bbox']]
+            bbox[2] = 1 if bbox[2] == 0 else bbox[2]
+            bbox[3] = 1 if bbox[3] == 0 else bbox[3]
+            
+            masked_img = image * mask[:, :, None]
+            x, y, w, h = bbox
+            patch = masked_img[y:y+h, x:x+w]
+            patch_mask = mask[y:y+h, x:x+w]
+
+            segments.append({
+                "patch": patch,
+                "mask": patch_mask,
+                'image_path': image_path,
+                'bbox': bbox,
+                "label": 0,
+                "name": obj['name'],
+                "caption": obj['caption'],
+            })
+
+        return segments
+       
+
+class V3DetDataset:
+    def __init__(self, v3det_root, split):
+        self.dataset_name = 'v3det'
+        self.v3det_root = v3det_root
+        self.split = split
+        self.annotations_path = os.path.join(v3det_root, f'annotations/v3det_20231116_sam_masks_{split}.jsonl')
+        self.images_path = os.path.join(v3det_root, f'images')
+        self.file = open(self.annotations_path, 'r')
+        self.category_info = json.load(open(os.path.join(v3det_root, 'annotations/v3det_2023_v1_category_info.json')))
+
+    def load_segments_from_one_image(self):
+        line = self.file.readline()
+        if not line:
+            self.file.seek(0)
+            line = self.file.readline()
+        line = json.loads(line)
+
+        image_path = os.path.join(self.images_path, line['image'])
+        image = np.array(Image.open(image_path).convert('RGB'))
+        objects = line['objects']
+        segments = []
+        for obj in objects:
+            mask = decode(obj['mask'])
+            bbox = [int(b) for b in obj['bbox']]
+            bbox[2] = 1 if bbox[2] == 0 else bbox[2]
+            bbox[3] = 1 if bbox[3] == 0 else bbox[3]
+            
+            masked_img = image * mask[:, :, None]
+            x, y, w, h = bbox
+            patch = masked_img[y:y+h, x:x+w]
+            patch_mask = mask[y:y+h, x:x+w]
+
+            category_info = self.category_info[obj['name']]
+            caption = f'An image of a {category_info["name"]}, {category_info["cat_info"]}'# {category_info["cat_info_gpt"]}'
+
+            segments.append({
+                "patch": patch,
+                "mask": patch_mask,
+                'image_path': image_path,
+                'bbox': bbox,
+                "label": 0,
+                "name": obj['name'],
+                "caption": caption,
+            })
+
+        return segments
+        
+
+
 class LVISDataset:
     def __init__(self, lvis_root, coco_root, split):
+        self.dataset_name = 'lvis'
         self.lvis_root = lvis_root
         self.coco_root = coco_root
 
@@ -154,8 +248,8 @@ class LVISDataset:
                 "mask": patch_mask,
                 'image_path': img_path,
                 'bbox': bbox, # 'x', 'y', 'width', 'height
-                "label": label,
                 "name": name,
+                "caption": f'An image of a {name}',
             })  
 
         return segments
@@ -163,6 +257,7 @@ class LVISDataset:
 
 class COCODataset:
     def __init__(self, coco_root, split):
+        self.dataset_name = 'coco'
         self.coco_root = coco_root
         if split == 'train':
             self.sub_dir = 'train2017'
@@ -221,6 +316,7 @@ class COCODataset:
                 'bbox': bbox, # 'x', 'y', 'width', 'height
                 "label": label,
                 "name": self.id_to_name[label],
+                "caption": f'An image of a {self.id_to_name[label]}',
             })  
 
         return segments
@@ -257,8 +353,8 @@ class SeqMaskDataset(Dataset):
         segment_info = {
             'width': segment['patch'].shape[1],
             'height': segment['patch'].shape[0],
-            'label': segment['label'],
             'name': segment['name'],
+            'caption': segment['caption'],
             'image_path': segment['image_path'],
             'bbox': segment['bbox'],
         }
