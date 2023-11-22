@@ -110,6 +110,9 @@ def main(rank, world_size, args):
         model = Seq2SeqAutoEncoderModel(config)
     else:
         model = Seq2SeqAutoEncoderModel.from_pretrained(args.model_config)
+        if args.new_data_seq_length is not None:
+            print(f'Changing model resolution. Original data_seq_length={model.config.data_seq_length}, new data_seq_length: {args.new_data_seq_length} (num_queries={model.config.num_queries})')
+            model.change_resolution(args.new_data_seq_length)
 
     if args.rank == 0:
         print(model)
@@ -204,6 +207,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Seq2Seq-AutoEncoder')
     parser.add_argument('--training_config', type=str, required=True, help='path to training config json file')
     parser.add_argument('--model_config', type=str, required=True, help='path to model config json file')
+    parser.add_argument('--new_data_seq_length', type=int, default=None, help='high-resolution continuous pretraining')
 
     args = parser.parse_args()
 

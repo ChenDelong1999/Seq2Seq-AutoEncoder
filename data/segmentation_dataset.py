@@ -35,6 +35,9 @@ class SA1BDataset:
         self.num_images = len(self.img_ids)
         self.num_categories = 1
 
+        # shuffle image ids
+        random.shuffle(self.img_ids)
+
     def preprocess_annotations(self, annotations, min_pixel_num):
         new_annotations = []
         for annotation in annotations:

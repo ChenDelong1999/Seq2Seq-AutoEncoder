@@ -21,11 +21,21 @@ https://www.lvisdataset.org/dataset
 
 116@hkust: /home/dchenbs/workspace/datasets/lvis,/home/dchenbs/workspace/datasets/coco2017
 
-### Training
-
+### Pre-Training
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
     --model_config 'configs/model_config/model.json' \
     --training_config 'configs/training_config/sa1b.json'
+```
+
+
+### High-resolution Continual Pre-training
+
+```bash
+# model_config not endwith `.json` means load model from pretrained
+CUDA_VISIBLE_DEVICES=4,5 python main.py \
+    --model_config 'runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step950k' \
+    --training_config 'configs/training_config/sa1b-HD2304@hkust116.json' \
+    --new_data_seq_length 2304
 ```

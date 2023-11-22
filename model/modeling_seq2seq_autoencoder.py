@@ -4,6 +4,7 @@ from tqdm import tqdm
 import numpy as np
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import (
@@ -974,3 +975,28 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
             decoder_input = torch.cat((decoder_input, prediction[:, -1:, :]), dim=1)
         
         return decoder_input
+
+    def change_resolution(self, new_data_seq_length):
+        
+        self.config.data_seq_length = new_data_seq_length
+        self.config.model_seq_length = new_data_seq_length + self.config.num_queries + 1
+        
+        device = self.encoder.embed_positions.weight.device
+        self.encoder.embed_positions = SinusoidalPositionalEmbedding(
+                self.config.model_seq_length,
+                self.config.d_model,
+            ).to(device)
+        self.decoder.embed_positions = SinusoidalPositionalEmbedding(
+                self.config.model_seq_length,
+                self.config.d_model,
+            ).to(device)
+        original_pe = self.learnable_positional_embedding.weight
+        original_pe = original_pe.unsqueeze(0).unsqueeze(0)
+        scaled_pe = F.interpolate(original_pe, size=(self.config.model_seq_length, self.config.d_model), mode='bilinear', align_corners=False)
+        scaled_pe = scaled_pe.squeeze(0).squeeze(0)
+
+        self.learnable_positional_embedding = nn.Embedding(self.config.model_seq_length, self.config.d_model)
+        self.learnable_positional_embedding.weight = nn.Parameter(scaled_pe)
+
+        self.encoder.learnable_positional_embedding = self.learnable_positional_embedding
+        self.decoder.learnable_positional_embedding = self.learnable_positional_embedding
