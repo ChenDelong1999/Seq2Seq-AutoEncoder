@@ -12,8 +12,8 @@ pip install -r requirements.txt
 
 #### SA-1B
 
-xiaobing: /cpfs/shared/research-llm/instruc_data_en/multimodal_instruct_tuning/sa1b/SA-1B/EXTRACTED
-116@hkust: /home/dchenbs/workspace/datasets/sa1b
+- xiaobing: /cpfs/shared/research-llm/instruc_data_en/multimodal_instruct_tuning/sa1b/SA-1B/EXTRACTED
+- 116@hkust: /home/dchenbs/workspace/datasets/sa1b
 
 #### LVIS
 
@@ -34,8 +34,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
 
 ```bash
 # model_config not endwith `.json` means load model from pretrained
-CUDA_VISIBLE_DEVICES=4,5 python main.py \
-    --model_config 'runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step950k' \
-    --training_config 'configs/training_config/sa1b-HD2304@hkust116.json' \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
+    --model_config 'runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step1000k' \
+    --training_config 'configs/training_config/sa1b-HD2304@xiaobing739.json' \
     --new_data_seq_length 2304
 ```
