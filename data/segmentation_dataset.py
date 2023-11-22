@@ -31,6 +31,10 @@ class SA1BDataset:
                         self.img_ids.append(os.path.join(subfolder_path, img_file[:-4]))
         print(f"SA1B dataset loaded. {len(self.img_ids)} images found.")
 
+        self.num_segments = 200000000
+        self.num_images = len(self.img_ids)
+        self.num_categories = 1
+
     def preprocess_annotations(self, annotations, min_pixel_num):
         new_annotations = []
         for annotation in annotations:
@@ -86,6 +90,9 @@ class SA1BDataset:
             })  
 
         return segments
+    
+    def class_name_to_class_id(self, name):
+        return 0
 
 
 class VisualGenomeDataset:
@@ -95,6 +102,12 @@ class VisualGenomeDataset:
         self.split = split
         self.annotations_path = os.path.join(visual_genome_root, f'visual_genome_1117_sam_mask.jsonl')
         self.file = open(self.annotations_path, 'r')
+        self.num_images = 108077
+        self.num_segments = 0
+        for line in self.file:
+            self.num_segments += len(json.loads(line)['objects'])
+        self.file.seek(0)
+        self.num_categories = 1
 
     def load_segments_from_one_image(self):
         line = self.file.readline()
@@ -129,6 +142,9 @@ class VisualGenomeDataset:
             })
 
         return segments
+    
+    def class_name_to_class_id(self, name):
+        return 0
        
 
 class V3DetDataset:
@@ -139,7 +155,16 @@ class V3DetDataset:
         self.annotations_path = os.path.join(v3det_root, f'annotations/v3det_20231116_sam_masks_{split}.jsonl')
         self.images_path = os.path.join(v3det_root, f'images')
         self.file = open(self.annotations_path, 'r')
+        
         self.category_info = json.load(open(os.path.join(v3det_root, 'annotations/v3det_2023_v1_category_info.json')))
+        self.num_categories = len(self.category_info)
+
+        self.num_images = 0
+        self.num_segments = 0
+        for line in self.file:
+            self.num_segments += len(json.loads(line)['objects'])
+            self.num_images += 1
+        self.file.seek(0)
 
     def load_segments_from_one_image(self):
         line = self.file.readline()
@@ -177,6 +202,9 @@ class V3DetDataset:
             })
 
         return segments
+    
+    def class_name_to_class_id(self, name):
+        return self.category_info[name]['id']
         
 
 
@@ -188,15 +216,23 @@ class LVISDataset:
 
         if split == 'train':
             self.sub_dir = 'train2017'
+            self.num_segments = 1270141
         elif split == 'val':
             self.sub_dir = 'val2017'
+            self.num_segments = 244707
         else:
             raise NotImplementedError
 
         self.lvis = LVIS(f'{self.lvis_root}/lvis_v1_{split}.json')
         self.img_ids = self.lvis.get_img_ids()
         self.load_anns = self.lvis.load_anns()
-        print(f'Loaded "{split}" split of LVIS with {len(self.img_ids)} images and {len(self.load_anns)} annotations.')
+        self.num_images = len(self.img_ids)
+
+        self.class_name_to_class_id_mapping = {}
+        for cat in self.lvis.cats.values():
+            name = ', '.join([synonym.replace('_', ' ') for synonym in cat['synonyms']]) 
+            self.class_name_to_class_id_mapping[name] = cat['id']
+        self.num_categories = len(self.class_name_to_class_id_mapping)
         
     def preprocess_annotations(self, annotations, min_pixel_num):
         new_annotations = []
@@ -241,7 +277,7 @@ class LVISDataset:
 
             category = self.lvis.load_cats([label])[0]
             name = ', '.join([synonym.replace('_', ' ') for synonym in category['synonyms']]) 
-            name += f', {category["def"]}'
+            caption = f'An image of a {name}, {category["def"]}'
 
             segments.append({
                 "patch": patch,
@@ -249,11 +285,13 @@ class LVISDataset:
                 'image_path': img_path,
                 'bbox': bbox, # 'x', 'y', 'width', 'height
                 "name": name,
-                "caption": f'An image of a {name}',
+                "caption": caption,
             })  
 
         return segments
 
+    def class_name_to_class_id(self, name):
+        return self.class_name_to_class_id_mapping[name]
 
 class COCODataset:
     def __init__(self, coco_root, split):
@@ -261,13 +299,17 @@ class COCODataset:
         self.coco_root = coco_root
         if split == 'train':
             self.sub_dir = 'train2017'
+            self.num_segments = 860001
         elif split == 'val':
             self.sub_dir = 'val2017'
+            self.num_segments = 36781
         else:
             raise NotImplementedError
 
         self.coco = COCO(f'{self.coco_root}/annotations/instances_{self.sub_dir}.json')
         self.img_ids = list(sorted(self.coco.imgs.keys()))
+        self.num_images = len(self.img_ids)
+        self.num_categories = len(self.coco.cats)
         self.id_to_name = {category['id']: category['name'] for category in self.coco.loadCats(self.coco.getCatIds())}
 
     def preprocess_annotations(self, annotations, min_pixel_num):
@@ -320,12 +362,16 @@ class COCODataset:
             })  
 
         return segments
+    
+    def class_name_to_class_id(self, name):
+        return self.coco.getCatIds(catNms=[name])[0]
 
 
 class SeqMaskDataset(Dataset):
-    def __init__(self, dataset, num_queries, virtual_dataset_size=1000, data_seq_length=64*64, min_resize_ratio=1.0):
+    def __init__(self, dataset, num_queries, data_seq_length=64*64, min_resize_ratio=1.0):
         self.dataset = dataset
-        self.virtual_dataset_size = virtual_dataset_size
+        self.virtual_dataset_size = self.dataset.num_segments
+        print(f'Dataset {self.dataset.dataset_name} has {self.dataset.num_images} images and {self.virtual_dataset_size} segment instances in {self.dataset.num_categories} categories.')
         self.num_queries = num_queries
         self.data_seq_length = data_seq_length
         self.model_seq_length = self.data_seq_length + self.num_queries + 1
