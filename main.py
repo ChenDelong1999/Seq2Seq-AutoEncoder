@@ -21,7 +21,6 @@ device = torch.device('cuda')
 
 
 from data.dataset import get_dataset
-from evaluation import evaluate
 from model import Seq2SeqAutoEncoderConfig, Seq2SeqAutoEncoderModel
 from utils import ddp_setup, get_params_count_summary, save_hf_pretrained_model
 from loss import seq2seq_autoencoder_loss
@@ -85,14 +84,6 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
             checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{int((step+1)/1000)}k')
             save_hf_pretrained_model(model, checkpoint_dir)
             print(f'Saved checkpoint: {checkpoint_dir}')
-            
-        if step!=0 and step % args.eval_interval == 0 and args.rank == 0:
-            print('Start evaluations')
-            metrics = evaluate(model, test_dataset, device, writer, step, args)
-            for name, value in metrics.items():
-                writer.add_scalar(f'test/{name}', value, step)
-                print(f'\t{name}: {value}')
-            model.train()
 
     if args.rank == 0:
         print(f'Epoch {epoch+1}/{args.epochs} finished in {(time.time()-start_time_epoch)/60:.1f}min')
@@ -189,14 +180,9 @@ def main(rank, world_size, args):
     else:
         writer = None
 
-    if not args.eval_only:
-        for epoch in range(args.epochs):
-            train_dataloader.sampler.set_epoch(epoch)
-            train(model, train_dataloader, test_dataset, optimizer, scheduler, device, writer, epoch, args)
-    elif args.rank == 0:
-        metrics = evaluate(model, test_dataset, device, writer, step=0, args=args)
-        for name, value in metrics.items():
-            print(f'\t{name}: {value}')
+    for epoch in range(args.epochs):
+        train_dataloader.sampler.set_epoch(epoch)
+        train(model, train_dataloader, test_dataset, optimizer, scheduler, device, writer, epoch, args)
 
     if args.rank == 0:
         writer.close()
