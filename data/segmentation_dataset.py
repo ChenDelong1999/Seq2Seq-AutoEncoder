@@ -38,6 +38,9 @@ class SA1BDataset:
         # shuffle image ids
         random.shuffle(self.img_ids)
 
+    def get_all_captions(self):
+        return []
+
     def preprocess_annotations(self, annotations, min_pixel_num):
         new_annotations = []
         for annotation in annotations:
@@ -112,6 +115,18 @@ class VisualGenomeDataset:
         self.file.seek(0)
         self.num_categories = 1
 
+    def get_all_captions(self):
+        captions = []
+        for line in self.file:
+            objects = json.loads(line)['objects']
+            for obj in objects:
+                caption = obj['caption']
+                captions.append(caption)
+
+        # deduplicate
+        captions = list(set(captions))
+        return captions
+
     def load_segments_from_one_image(self):
         line = self.file.readline()
         if not line:
@@ -168,6 +183,13 @@ class V3DetDataset:
             self.num_segments += len(json.loads(line)['objects'])
             self.num_images += 1
         self.file.seek(0)
+
+    def get_all_captions(self):
+        captions = []
+        for cat in self.category_info.values():
+            caption = f'An image of a {cat["name"]}, {cat["cat_info"]}'
+            captions.append(caption)
+        return captions
 
     def load_segments_from_one_image(self):
         line = self.file.readline()
@@ -236,6 +258,14 @@ class LVISDataset:
             name = ', '.join([synonym.replace('_', ' ') for synonym in cat['synonyms']]) 
             self.class_name_to_class_id_mapping[name] = cat['id']
         self.num_categories = len(self.class_name_to_class_id_mapping)
+
+    def get_all_captions(self):
+        captions = []
+        for cat in self.lvis.cats.values():
+            name = ', '.join([synonym.replace('_', ' ') for synonym in cat['synonyms']]) 
+            caption = f'An image of a {name}, {cat["def"]}'
+            captions.append(caption)
+        return captions
         
     def preprocess_annotations(self, annotations, min_pixel_num):
         new_annotations = []
@@ -297,7 +327,7 @@ class LVISDataset:
         return self.class_name_to_class_id_mapping[name]
 
 class COCODataset:
-    def __init__(self, coco_root, split):
+    def __init__(self, coco_root, split, text_features=None):
         self.dataset_name = 'coco'
         self.coco_root = coco_root
         if split == 'train':
@@ -314,6 +344,10 @@ class COCODataset:
         self.num_images = len(self.img_ids)
         self.num_categories = len(self.coco.cats)
         self.id_to_name = {category['id']: category['name'] for category in self.coco.loadCats(self.coco.getCatIds())}
+
+    def get_all_captions(self):
+        captions = [f'An image of a {self.id_to_name[category_id]}' for category_id in self.id_to_name.keys()]
+        return captions
 
     def preprocess_annotations(self, annotations, min_pixel_num):
         new_annotations = []
@@ -371,7 +405,7 @@ class COCODataset:
 
 
 class SeqMaskDataset(Dataset):
-    def __init__(self, dataset, num_queries, data_seq_length=64*64, min_resize_ratio=1.0):
+    def __init__(self, dataset, num_queries, data_seq_length=64*64, min_resize_ratio=1.0, text_features=None):
         self.dataset = dataset
         self.virtual_dataset_size = self.dataset.num_segments
         print(f'Dataset {self.dataset.dataset_name} has {self.dataset.num_images} images and {self.virtual_dataset_size} segment instances in {self.dataset.num_categories} categories.')
@@ -390,6 +424,18 @@ class SeqMaskDataset(Dataset):
 
         self.min_resize_ratio = min_resize_ratio
 
+        if text_features is not None:
+            self.text_features = np.load(text_features, allow_pickle=True).item()
+            print(f'Loaded {len(self.text_features.keys())} text features from "{text_features}".')
+            print('Checking if all captions are in the text features...')
+            for caption in self.dataset.get_all_captions():
+                if caption not in self.text_features.keys():
+                    raise ValueError(f'Caption "{caption}" not found in "{text_features}".')
+            print('All captions found in the text features!')
+        else:
+            print('No text features provided. Will not use text features.')
+            self.text_features = None
+
     def __getitem__(self, index):
         while len(self.sample_buffer) == 0:
             segments = self.dataset.load_segments_from_one_image()
@@ -398,7 +444,7 @@ class SeqMaskDataset(Dataset):
                 segment = self.encode_to_sequence(segment)
                 self.sample_buffer.append(segment)
            
-        segment = self.sample_buffer.pop() 
+        segment = self.sample_buffer.pop()
         segment_info = {
             'width': segment['patch'].shape[1],
             'height': segment['patch'].shape[0],
@@ -406,6 +452,7 @@ class SeqMaskDataset(Dataset):
             'caption': segment['caption'],
             'image_path': segment['image_path'],
             'bbox': segment['bbox'],
+            'text_feature': self.text_features[segment['caption']] if self.text_features is not None else None,
         }
         return segment['data_sequence'], segment_info
 

@@ -9,3 +9,6 @@ pycocotools
 transformers
 tensorboard
 lvis
+git+https://github.com/facebookresearch/segment-anything.git
+opencv-python
+open_clip_torch

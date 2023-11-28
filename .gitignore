@@ -32,6 +32,7 @@ coverage.xml
 
 # ignore data, legacy, runs, checkpoints folder
 data/cache/*
+data/text_features/*
 !dataset/.gitkeep
 legacy/*
 runs/*
