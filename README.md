@@ -24,15 +24,26 @@ https://www.lvisdataset.org/dataset
 ### Pre-Training
 
 ```bash
+# 2023.11.14
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
     --model_config 'configs/model_config/model.json' \
     --training_config 'configs/training_config/sa1b.json'
 ```
 
 
+```bash
+# 2023.11.28
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
+    --model_config 'runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step1000k' \
+    --training_config 'configs/training_config/sa1b.json'
+```
+
+
+
 ### High-resolution Continual Pre-training
 
 ```bash
+# 2023.11.22
 # model_config not endwith `.json` means load model from pretrained
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
     --model_config 'runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step1000k' \
