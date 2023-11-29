@@ -15,6 +15,22 @@ try:
 except:
     pass # temporary fix for the lvis & opencv installation issue
 import random
+import cv2
+
+np.random.seed(42)
+random.seed(42)
+
+def get_bounding_box(mask):
+    y_indices, x_indices = np.where(mask)
+    x_min = np.min(x_indices)
+    y_min = np.min(y_indices)
+    x_max = np.max(x_indices)
+    y_max = np.max(y_indices)
+    w = x_max - x_min
+    h = y_max - y_min
+    w = 1 if w == 0 else w
+    h = 1 if h == 0 else h
+    return x_min, y_min, w, h
 
 
 class SA1BDataset:
@@ -35,61 +51,53 @@ class SA1BDataset:
         self.num_images = len(self.img_ids)
         self.num_categories = 1
 
-        # shuffle image ids
         random.shuffle(self.img_ids)
 
     def get_all_captions(self):
         return []
 
-    def preprocess_annotations(self, annotations, min_pixel_num):
+    def preprocess_annotations(self, annotations, split_disconnected, min_pixel_num=16):
         new_annotations = []
         for annotation in annotations:
-            mask = decode(annotation['segmentation'])
-            labeled_mask, num_labels = label(mask)
-            for i in range(1, num_labels + 1):
-                new_annotation = annotation.copy()
-                new_annotation['segmentation'] = (labeled_mask == i)
-                if new_annotation['segmentation'].sum() >= min_pixel_num:
-                    new_annotation['bbox'] = [
-                        np.min(np.where(new_annotation['segmentation'])[1]),  # x_min
-                        np.min(np.where(new_annotation['segmentation'])[0]),  # y_min
-                        np.max(np.where(new_annotation['segmentation'])[1]) - np.min(np.where(new_annotation['segmentation'])[1]),  # width
-                        np.max(np.where(new_annotation['segmentation'])[0]) - np.min(np.where(new_annotation['segmentation'])[0]),  # height
-                    ]
-                    new_annotations.append(new_annotation)
+            annotation['segmentation'] = decode(annotation['segmentation'])
+            if not split_disconnected:
+                new_annotations.append(annotation)
+            else:
+                labeled_mask, num_labels = label(annotation['segmentation'])
+                for i in range(1, num_labels + 1):
+                    new_annotation = annotation.copy()
+                    new_annotation['segmentation'] = (labeled_mask == i)
+                    if new_annotation['segmentation'].sum() >= min_pixel_num:
+                        new_annotation['bbox'] = get_bounding_box(new_annotation['segmentation'])
+                        new_annotations.append(new_annotation)
         return new_annotations
     
-    def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
-        if image_index is None:
-            success = False
-            while not success:
-                image_index = np.random.randint(0, len(self.img_ids))
-                img_path = self.img_ids[image_index] + '.jpg'
-                json_path = self.img_ids[image_index] + '.json'
-                if os.path.exists(json_path):
-                    try:
-                        image = np.array(Image.open(img_path).convert('RGB'))
-                        annotations = json.load(open(json_path))['annotations']
-                        annotations = self.preprocess_annotations(annotations, min_pixel_num)
-                        success = True
-                    except:
-                        pass
+    def load_segments_from_one_image(self):
+        success = False
+        while not success:
+            img_id = self.img_ids[np.random.randint(0, len(self.img_ids))]
+            try:
+                image = np.array(Image.open(img_id + '.jpg').convert('RGB'))
+                annotations = json.load(open(img_id + '.json'))['annotations']
+                annotations = self.preprocess_annotations(annotations, split_disconnected=False)
+                success = True
+            except:
+                continue
 
         segments = []
         for annotation in annotations:
-            mask = annotation['segmentation']
             bbox = [int(b) for b in annotation['bbox']]
             bbox[2] = 1 if bbox[2] == 0 else bbox[2]
             bbox[3] = 1 if bbox[3] == 0 else bbox[3]
-            
-            masked_img = image * mask[:, :, None]
             x, y, w, h = bbox
-            patch = masked_img[y:y+h, x:x+w]
+            patch = image[y:y+h, x:x+w]
+
+            mask = annotation['segmentation']
             patch_mask = mask[y:y+h, x:x+w]
             segments.append({
                 "patch": patch,
                 "mask": patch_mask,
-                'image_path': img_path,
+                'image_path': img_id + '.jpg',
                 'bbox': bbox, # 'x', 'y', 'width', 'height
                 "name": "",
                 "caption": "",
@@ -108,10 +116,14 @@ class VisualGenomeDataset:
         self.split = split
         self.annotations_path = os.path.join(visual_genome_root, f'visual_genome_1117_sam_mask.jsonl')
         self.file = open(self.annotations_path, 'r')
-        self.num_images = 108077
+
         self.num_segments = 0
+        images = []
         for line in self.file:
-            self.num_segments += len(json.loads(line)['objects'])
+            sample = json.loads(line)
+            self.num_segments += len(sample['objects'])
+            images.append(sample['image'])
+        self.num_images = len(set(images))
         self.file.seek(0)
         self.num_categories = 1
 
@@ -123,7 +135,6 @@ class VisualGenomeDataset:
                 caption = obj['caption']
                 captions.append(caption)
 
-        # deduplicate
         captions = list(set(captions))
         return captions
 
@@ -132,21 +143,18 @@ class VisualGenomeDataset:
         if not line:
             self.file.seek(0)
             line = self.file.readline()
-        line = json.loads(line)
+        sample = json.loads(line)
 
-        image_path = os.path.join(self.visual_genome_root, line['image'])
+        image_path = os.path.join(self.visual_genome_root, sample['image'])
         image = np.array(Image.open(image_path).convert('RGB'))
-        objects = line['objects']
         segments = []
-        for obj in objects:
+        for obj in sample['objects']:
             mask = decode(obj['mask'])
-            bbox = [int(b) for b in obj['bbox']]
-            bbox[2] = 1 if bbox[2] == 0 else bbox[2]
-            bbox[3] = 1 if bbox[3] == 0 else bbox[3]
-            
-            masked_img = image * mask[:, :, None]
+            if mask.sum() == 0:
+                continue
+            bbox = get_bounding_box(mask)
             x, y, w, h = bbox
-            patch = masked_img[y:y+h, x:x+w]
+            patch = image[y:y+h, x:x+w]
             patch_mask = mask[y:y+h, x:x+w]
 
             segments.append({
@@ -204,13 +212,10 @@ class V3DetDataset:
         segments = []
         for obj in objects:
             mask = decode(obj['mask'])
-            bbox = [int(b) for b in obj['bbox']]
-            bbox[2] = 1 if bbox[2] == 0 else bbox[2]
-            bbox[3] = 1 if bbox[3] == 0 else bbox[3]
+            bbox = get_bounding_box(mask)
             
-            masked_img = image * mask[:, :, None]
             x, y, w, h = bbox
-            patch = masked_img[y:y+h, x:x+w]
+            patch = image[y:y+h, x:x+w]
             patch_mask = mask[y:y+h, x:x+w]
 
             category_info = self.category_info[obj['name']]
@@ -231,7 +236,6 @@ class V3DetDataset:
     def class_name_to_class_id(self, name):
         return self.category_info[name]['id']
         
-
 
 class LVISDataset:
     def __init__(self, lvis_root, coco_root, split):
@@ -267,22 +271,21 @@ class LVISDataset:
             captions.append(caption)
         return captions
         
-    def preprocess_annotations(self, annotations, min_pixel_num):
+    def preprocess_annotations(self, annotations, split_disconnected, min_pixel_num=16):
         new_annotations = []
         for annotation in annotations:
-            mask = self.lvis.ann_to_mask(annotation)
-            labeled_mask, num_labels = label(mask)
-            for i in range(1, num_labels + 1):
-                new_annotation = annotation.copy()
-                new_annotation['segmentation'] = (labeled_mask == i)
-                if new_annotation['segmentation'].sum() >= min_pixel_num:
-                    new_annotation['bbox'] = [
-                        np.min(np.where(new_annotation['segmentation'])[1]),  # x_min
-                        np.min(np.where(new_annotation['segmentation'])[0]),  # y_min
-                        np.max(np.where(new_annotation['segmentation'])[1]) - np.min(np.where(new_annotation['segmentation'])[1]),  # width
-                        np.max(np.where(new_annotation['segmentation'])[0]) - np.min(np.where(new_annotation['segmentation'])[0]),  # height
-                    ]
-                    new_annotations.append(new_annotation)
+            if type(annotation['segmentation']) == list:
+                annotation['segmentation'] = self.lvis.ann_to_mask(annotation)
+            if not split_disconnected:
+                new_annotations.append(annotation)
+            else:
+                labeled_mask, num_labels = label(annotation)
+                for i in range(1, num_labels + 1):
+                    new_annotation = annotation.copy()
+                    new_annotation['segmentation'] = (labeled_mask == i)
+                    if new_annotation['segmentation'].sum() >= min_pixel_num:
+                        new_annotation['bbox'] = get_bounding_box(new_annotation['segmentation'])
+                        new_annotations.append(new_annotation)
         return new_annotations
 
     def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
@@ -294,7 +297,7 @@ class LVISDataset:
         image = np.array(Image.open(img_path).convert('RGB'))
 
         annotations = self.lvis.load_anns(self.lvis.get_ann_ids([img_id]))
-        annotations = self.preprocess_annotations(annotations, min_pixel_num)
+        annotations = self.preprocess_annotations(annotations, split_disconnected=False)
         segments = []
         for annotation in annotations:
             label = annotation['category_id']
@@ -303,9 +306,9 @@ class LVISDataset:
             bbox[2] = 1 if bbox[2] == 0 else bbox[2]
             bbox[3] = 1 if bbox[3] == 0 else bbox[3]
             
-            masked_img = image * mask[:, :, None]
+            # masked_img = image * mask[:, :, None]
             x, y, w, h = bbox
-            patch = masked_img[y:y+h, x:x+w]
+            patch = image[y:y+h, x:x+w]
             patch_mask = mask[y:y+h, x:x+w]
 
             category = self.lvis.load_cats([label])[0]
@@ -325,6 +328,7 @@ class LVISDataset:
 
     def class_name_to_class_id(self, name):
         return self.class_name_to_class_id_mapping[name]
+
 
 class COCODataset:
     def __init__(self, coco_root, split, text_features=None):
@@ -384,9 +388,9 @@ class COCODataset:
             bbox[2] = 1 if bbox[2] == 0 else bbox[2]
             bbox[3] = 1 if bbox[3] == 0 else bbox[3]
             
-            masked_img = image * mask[:, :, None]
+            # masked_img = image * mask[:, :, None]
             x, y, w, h = bbox
-            patch = masked_img[y:y+h, x:x+w]
+            patch = image[y:y+h, x:x+w]
             patch_mask = mask[y:y+h, x:x+w]
             segments.append({
                 "patch": patch,
@@ -405,7 +409,7 @@ class COCODataset:
 
 
 class SeqMaskDataset(Dataset):
-    def __init__(self, dataset, num_queries, data_seq_length=64*64, min_resize_ratio=1.0, text_features=None):
+    def __init__(self, dataset, num_queries, data_seq_length=64*64, min_resize_ratio=1.0, text_features=None, expand_mask_ratio=0):
         self.dataset = dataset
         self.virtual_dataset_size = self.dataset.num_segments
         print(f'Dataset {self.dataset.dataset_name} has {self.dataset.num_images} images and {self.virtual_dataset_size} segment instances in {self.dataset.num_categories} categories.')
@@ -423,15 +427,14 @@ class SeqMaskDataset(Dataset):
         self.sample_buffer = []
 
         self.min_resize_ratio = min_resize_ratio
+        self.expand_mask_ratio = expand_mask_ratio
 
         if text_features is not None:
             self.text_features = np.load(text_features, allow_pickle=True).item()
             print(f'Loaded {len(self.text_features.keys())} text features from "{text_features}".')
-            print('Checking if all captions are in the text features...')
             for caption in self.dataset.get_all_captions():
                 if caption not in self.text_features.keys():
                     raise ValueError(f'Caption "{caption}" not found in "{text_features}".')
-            print('All captions found in the text features!')
         else:
             print('No text features provided. Will not use text features.')
             self.text_features = None
@@ -441,6 +444,12 @@ class SeqMaskDataset(Dataset):
             segments = self.dataset.load_segments_from_one_image()
             for segment in segments:
                 segment = self.resize(segment)
+                if self.expand_mask_ratio > 0:
+                    try:
+                        segment = self.expand_mask(segment, self.expand_mask_ratio)
+                    except:
+                        print(segment)
+                segment['patch'] = segment['patch'] * segment['mask'][:, :, None]
                 segment = self.encode_to_sequence(segment)
                 self.sample_buffer.append(segment)
            
@@ -461,7 +470,14 @@ class SeqMaskDataset(Dataset):
 
     def update_data_seq_length_multiplier(self, data_seq_length_multiplier):
         self.data_seq_length_multiplier = data_seq_length_multiplier
-        
+    
+    def expand_mask(self, segment, expand_mask_ratio):
+        kernel_size = int(min(segment['patch'].shape[:2]) * expand_mask_ratio) // 2 * 2 + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(kernel_size,kernel_size))
+        segment['mask'] = segment['mask'].astype(np.uint8)
+        blurred_mask = cv2.filter2D(segment['mask'],-1,kernel)
+        segment['mask'] = (blurred_mask > 0).astype(bool)
+        return segment
 
     def resize(self, segment):
         h, w = segment['patch'].shape[:2]

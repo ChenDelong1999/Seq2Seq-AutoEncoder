@@ -31,7 +31,12 @@ def decode_image_from_seq(seq):
     is_data_seq = is_data_seq > 0.5
 
     # find the last positive element in shape_encoding_seq, and use it to truncate data and sequences
-    last_positive_index = np.nonzero(shape_encoding_seq)[0][-1]
+    non_zero_indices = np.nonzero(shape_encoding_seq)[0]
+    if non_zero_indices.size > 0:
+        last_positive_index = non_zero_indices[-1]
+    else:
+        last_positive_index = len(shape_encoding_seq) - 1
+    
     shape_encoding_seq = shape_encoding_seq[:last_positive_index+1]
     is_data_seq = is_data_seq[:last_positive_index+1]
     segment_data = segment_data[:last_positive_index+1] * 255
@@ -69,23 +74,37 @@ def decode_image_from_seq(seq):
     
     # apply mask to the segment: set all masked pixels to 255
     segment[mask == 0] = 255  
-    segment = segment[:, :-1, :].astype(np.uint8)
-    segment = transforms.ToPILImage()(segment)
+
+    if width_decoded > 1:
+        segment = segment[:, :-1, :]
+    segment = transforms.ToPILImage()(segment.astype(np.uint8))
 
     return segment, mask
 
 
-def visualize_segments(sample_info, original_segment, reconstructed_segment):
+def visualize_segments(sample_info, original_segment, reconstructed_segment, original_mask, reconstructed_mask):
 
-    fig, ax = plt.subplots(1, 3)
-    fig.set_size_inches(15, 5)
+    fig, ax = plt.subplots(1, 5)
+    fig.set_size_inches(25, 5)
     fig.suptitle(sample_info['name'])
+
+    ax[0].set_title('Original Image')
     ax[0].imshow(Image.open(sample_info['image_path']))
     x, y, w, h = sample_info['bbox']
     rect = plt.Rectangle((x, y), w, h, fill=False, color='red')
     ax[0].add_patch(rect)
+
+    ax[1].set_title('Original Segment')
     ax[1].imshow(original_segment)
+
+    ax[2].set_title('Reconstructed Segment')
     ax[2].imshow(reconstructed_segment)
+
+    ax[3].set_title('Original Mask')
+    ax[3].imshow(original_mask)
+
+    ax[4].set_title('Reconstructed Mask')
+    ax[4].imshow(reconstructed_mask)
 
     return fig
 
@@ -121,42 +140,68 @@ def get_knn_similarity(latents, references, k=10):
     return overall_similarity/len(latents)
 
 
-def get_datasets(model):
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+
+def get_linear_projection_cosine_similarity(latents, references, train_val_split_ratio=0.5):
+    if latents is None or references is None or len(latents) != len(references):
+        return 0
+    
+    train_val_split_index = int(len(latents) * train_val_split_ratio)
+
+    model = LinearRegression()
+    model.fit(latents[:train_val_split_index], references[:train_val_split_index])
+
+    predicted_references = model.predict(latents[train_val_split_index:])
+    ground_truth_references = references[train_val_split_index:]
+
+    similarity = [cosine_similarity(predicted_references[i].reshape(1, -1), ground_truth_references[i].reshape(1, -1)) for i in range(len(latents)-train_val_split_index)]
+
+    return np.mean(similarity), (predicted_references, ground_truth_references)
+
+
+def get_datasets(model, expand_mask_ratio=0):
     sa1b_dataset = SeqMaskDataset(
         dataset=SA1BDataset(sa1b_root='/home/dchenbs/workspace/datasets/sa1b'), 
         num_queries=model.config.num_queries, data_seq_length=model.config.data_seq_length,
+        expand_mask_ratio=expand_mask_ratio,
     )
 
     coco_dataset = SeqMaskDataset(
         dataset=COCODataset(coco_root='/home/dchenbs/workspace/datasets/coco2017', split='val'), 
         num_queries=model.config.num_queries, data_seq_length=model.config.data_seq_length,
-        text_features='data/text_features/coco_clip_rn50.npy'
+        text_features='data/text_features/coco_clip_rn50.npy',
+        expand_mask_ratio=expand_mask_ratio,
     )
 
     lvis_dataset = SeqMaskDataset(
         dataset=LVISDataset(lvis_root='/home/dchenbs/workspace/datasets/lvis', coco_root='/home/dchenbs/workspace/datasets/coco2017', split='val'), 
         num_queries=model.config.num_queries, data_seq_length=model.config.data_seq_length,
-        text_features='data/text_features/lvis_clip_rn50.npy'
+        text_features='data/text_features/lvis_clip_rn50.npy',
+        expand_mask_ratio=expand_mask_ratio,
     )
 
     v3det_dataset = SeqMaskDataset(
         dataset=V3DetDataset(v3det_root='/home/dchenbs/workspace/datasets/v3det', split='val'), 
         num_queries=model.config.num_queries, data_seq_length=model.config.data_seq_length,
-        text_features='data/text_features/v3det_clip_rn50.npy'
+        text_features='data/text_features/v3det_clip_rn50.npy',
+        expand_mask_ratio=expand_mask_ratio,
     )
 
     visual_genome_dataset = SeqMaskDataset(
         dataset=VisualGenomeDataset(visual_genome_root='/home/dchenbs/workspace/datasets/VisualGenome', split='val'), 
         num_queries=model.config.num_queries, data_seq_length=model.config.data_seq_length,
-        text_features='data/text_features/visual_genome_clip_rn50.npy'
+        text_features='data/text_features/visual_genome_clip_rn50.npy',
+        expand_mask_ratio=expand_mask_ratio,
     )
 
     return [coco_dataset, lvis_dataset, v3det_dataset, visual_genome_dataset, sa1b_dataset]
 
 
 
-def knn_evaluation(model, datasets, num_steps=2, batch_size=50, k=10, visualize=False):
-    knn_evaluation_results = {}
+def linear_evaluation(model, datasets, num_steps=2, batch_size=50, visualize=False):
+    correlation_evaluation_results = {}
     for dataset in datasets:
         all_latents = []
         all_sample_info = []
@@ -178,15 +223,19 @@ def knn_evaluation(model, datasets, num_steps=2, batch_size=50, k=10, visualize=
         all_ids = np.array([x['class_id'] for x in all_sample_info])
         all_text_features = np.array([x['text_feature'] for x in all_sample_info])
 
-        print('Calculating KNN similarities')
-        knn_similarity = get_knn_similarity(all_latents, all_text_features, k=k)
-        print(f'KNN similarity: {knn_similarity:.4f}')
-        knn_evaluation_results[dataset.dataset.dataset_name] = knn_similarity
+        print('Calculating linear projection cosine similarity')
+        linear_similarity, (prediction, ground_truth) = get_linear_projection_cosine_similarity(all_latents, all_text_features)
+        print(f'Linear projection cosine similarity: {linear_similarity:.4f}')
+
+        correlation_evaluation_results[dataset.dataset.dataset_name] = {
+            'cosine_similarity': float(linear_similarity),
+        }
         if visualize:
             tsne_visualize(all_latents, all_ids)
-    return knn_evaluation_results
+            tsne_visualize(np.concatenate([prediction, ground_truth], axis=0), np.concatenate([np.ones(len(prediction)), np.zeros(len(ground_truth))], axis=0))
+    return correlation_evaluation_results
 
-
+@torch.no_grad()
 def reconstruction_evaluation(model, datasets, num_steps=1, batch_size=1, visualize=False):
 
     reconstruction_evaluation_results = {}
@@ -195,7 +244,7 @@ def reconstruction_evaluation(model, datasets, num_steps=1, batch_size=1, visual
         overall_pixel_rmse = 0
         overall_aspect_ratio_rmse = 0
         overall_mask_rmse = 0
-        for step in range(num_steps):
+        for step in tqdm.tqdm(range(num_steps)):
             batch_data = []
             batch_sample_info = []
             for i in range(batch_size):
@@ -203,57 +252,57 @@ def reconstruction_evaluation(model, datasets, num_steps=1, batch_size=1, visual
                 batch_data.append(this_data)
                 batch_sample_info.append(this_sample_info)
 
-            batch_data = torch.stack(batch_data).cuda()
+            batch_data = torch.stack(batch_data).half().cuda()
             batch_latents = model.encode(batch_data)
-            batch_reconstructed = model.generate(batch_latents, show_progress_bar=True)
+            batch_reconstructed = model.generate(batch_latents, show_progress_bar=False)
 
             for i in range(batch_size):
                 seq = batch_data[i]
                 reconstructed = batch_reconstructed[i]
                 sample_info = batch_sample_info[i]
 
-                original_segment, original_mask = decode_image_from_seq(seq.cpu())
-                reconstructed_segment, reconstructed_mask = decode_image_from_seq(reconstructed.cpu())
-
+                original_segment, original_mask = decode_image_from_seq(seq.float().cpu())
+                reconstructed_segment, reconstructed_mask = decode_image_from_seq(reconstructed.float().cpu())
 
                 original_width, original_height = original_segment.size
                 reconstructed_width, reconstructed_height = reconstructed_segment.size
-                reconstructed_segment = reconstructed_segment.resize((original_width, original_height))
+                min_width = min(original_width, reconstructed_width)
+                min_height = min(original_height, reconstructed_height)
                 
-                
-                pixel_rmse = np.sqrt(np.mean((np.array(original_segment) - np.array(reconstructed_segment))**2))
+                pixel_rmse = np.sqrt(
+                    np.mean((np.array(original_segment) - np.array(reconstructed_segment.resize((original_width, original_height))))**2))
                 overall_pixel_rmse += pixel_rmse
 
-                reconstructed_mask = np.array(reconstructed_mask.resize((original_width, original_height)))
-                mask_rmse = np.sqrt(np.mean((original_mask.astype(np.float64) - reconstructed_mask.astype(np.float64))**2))
+                mask_rmse = np.sqrt(np.mean((original_mask[:min_height, :min_width] - reconstructed_mask[:min_height, :min_width])**2))
                 overall_mask_rmse += mask_rmse
 
                 aspect_ratio_rmse = np.sqrt((original_width/original_height - reconstructed_width/reconstructed_height)**2)
                 overall_aspect_ratio_rmse += aspect_ratio_rmse
 
-                print(f"Pixel RMSE: {pixel_rmse:.4f}, Mask RMSE: {mask_rmse:.4f}, Aspect Ratio RMSE: {aspect_ratio_rmse:.4f}")
+                # print(f"Pixel RMSE: {pixel_rmse:.4f}, Mask RMSE: {mask_rmse:.4f}, Aspect Ratio RMSE: {aspect_ratio_rmse:.4f}")
                 if visualize:
                     print(f"[{dataset.dataset.dataset_name}]: {sample_info['caption']}")
-                    fig = visualize_segments(sample_info, original_segment, reconstructed_segment)
+                    fig = visualize_segments(sample_info, original_segment, reconstructed_segment, original_mask, reconstructed_mask)
                     plt.show()
                     plt.close(fig)
 
         num_samples = num_steps * batch_size
-        reconstruction_evaluation_results[dataset.dataset.dataset_name] = {
+        reconstruction_evaluation_result = {
             'pixel_rmse': overall_pixel_rmse/num_samples if overall_pixel_rmse > 0 else 0,
             'mask_rmse': overall_mask_rmse/num_samples if overall_mask_rmse > 0 else 0,
             'aspect_ratio_rmse': overall_aspect_ratio_rmse/num_samples if overall_aspect_ratio_rmse > 0 else 0,
         }
+        reconstruction_evaluation_result = {k: round(v, 5) for k, v in reconstruction_evaluation_result.items()}
+
+        print(reconstruction_evaluation_result)
+        reconstruction_evaluation_results[dataset.dataset.dataset_name] = reconstruction_evaluation_result
 
     return reconstruction_evaluation_results
 
 
 """
-python evaluate_checkpoints.py --cuda_visible_devices "4" --steps 50 100 150 200 250
-python evaluate_checkpoints.py --cuda_visible_devices "4" --steps 300 350 400 450 500
-python evaluate_checkpoints.py --cuda_visible_devices "5" --steps 550 600 650 700 750
-python evaluate_checkpoints.py --cuda_visible_devices "5" --steps 800 850 900 950 1000
-
+python evaluation.py --cuda_visible_devices "4" --steps 50 150 250 350 450 550 650 750 850 950
+python evaluation.py --cuda_visible_devices "5" --steps 100 200 300 400 500 600 700 800 900 1000
 """
 if __name__=='__main__':
 
@@ -271,27 +320,27 @@ if __name__=='__main__':
         model_dir = model_dir_templete.replace('1000k', f'{step}k')
         print(f'Loading model from {model_dir}')
 
-        model = Seq2SeqAutoEncoderModel.from_pretrained(model_dir).cuda().eval()
+        model = Seq2SeqAutoEncoderModel.from_pretrained(model_dir).half().cuda().eval()
         datasets = get_datasets(model)
 
-        num_steps = 100
-        batch_size = 50
-        k=10
-        knn_evaluation_results = knn_evaluation(
-            model, 
-            datasets, 
-            num_steps=num_steps, 
-            batch_size=batch_size, 
-            k=k, 
-            visualize=False
-            )
-        file_name = f'knn_evaluation_k={k}_{num_steps*batch_size}samples'
-        json.dump(knn_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
-        pd.json_normalize(knn_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)
-        print(f'>>> Saved KNN Evluation Results to {model_dir}/{file_name}.json/csv')
+        # num_steps = 100
+        # batch_size = 100
+        # linear_evaluation_results = linear_evaluation(
+        #     model, 
+        #     datasets, 
+        #     num_steps=num_steps, 
+        #     batch_size=batch_size, 
+        #     visualize=True
+        #     )
+        # pprint.pprint(linear_evaluation_results)
+        # file_name = f'linear_evaluation_{num_steps*batch_size}samples'
+        # json.dump(linear_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
+        # pd.json_normalize(linear_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)
+        # print(f'>>> Saved KNN Evluation Results to {model_dir}/{file_name}.json/csv')
 
-        num_steps = 10
-        batch_size = 10
+
+        num_steps = 20
+        batch_size = 50
         reconstruction_evaluation_results = reconstruction_evaluation(
             model, 
             datasets, 
@@ -299,6 +348,7 @@ if __name__=='__main__':
             batch_size=batch_size, 
             visualize=False
             )
+        pprint.pprint(reconstruction_evaluation_results)
         file_name = f'reconstruction_evaluation_{num_steps*batch_size}samples'
         json.dump(reconstruction_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
         pd.json_normalize(reconstruction_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)

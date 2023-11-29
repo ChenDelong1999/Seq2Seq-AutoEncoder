@@ -966,7 +966,7 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
         show_progress_bar=False
     ) -> SampleTSPredictionOutput:    
 
-        decoder_input = torch.zeros(encoder_latents.shape[0], 1, self.config.input_channels, device=encoder_latents.device)
+        decoder_input = torch.zeros(encoder_latents.shape[0], 1, self.config.input_channels, device=encoder_latents.device).to(encoder_latents.dtype)
 
         range_object = tqdm(range(self.config.model_seq_length-1)) if show_progress_bar else range(self.config.model_seq_length-1)
         for step in range_object:
