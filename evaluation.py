@@ -21,63 +21,72 @@ random.seed(42)
 from data.dataset import get_dataset, SeqMaskDataset, LVISDataset, V3DetDataset, COCODataset, VisualGenomeDataset, SA1BDataset
 from model import Seq2SeqAutoEncoderModel, Seq2SeqAutoEncoderConfig
 
-def decode_image_from_seq(seq):
-    seq = seq.numpy()
-    segment_data = seq[1:, :3]
-    shape_encoding_seq = seq[1:, 3]
-    is_data_seq = seq[1:, 4]
 
-    shape_encoding_seq = shape_encoding_seq > 0.3
-    is_data_seq = is_data_seq > 0.5
+def decode_image_from_seq(data_seq, new_line_threshold=0.5, mask_threshold=0.5):
+    # input: seq (tensor of shape (seq_length, 5))
 
-    # find the last positive element in shape_encoding_seq, and use it to truncate data and sequences
-    non_zero_indices = np.nonzero(shape_encoding_seq)[0]
-    if non_zero_indices.size > 0:
-        last_positive_index = non_zero_indices[-1]
+    # first position is <start-of-sequence> token and should be ignored
+    rgb_seq = data_seq[1:, :3]
+    new_line_seq = data_seq[1:, 3] > new_line_threshold
+    mask_seq = data_seq[1:, 4] > mask_threshold
+
+    # find the last positive element in new_line_seq, and use it to truncate data and sequences
+    if np.sum(new_line_seq) > 0:
+        effective_seq_length = np.nonzero(new_line_seq)[0][-1] + 1 # +1 because we ignored the first token 
     else:
-        last_positive_index = len(shape_encoding_seq) - 1
-    
-    shape_encoding_seq = shape_encoding_seq[:last_positive_index+1]
-    is_data_seq = is_data_seq[:last_positive_index+1]
-    segment_data = segment_data[:last_positive_index+1] * 255
+        effective_seq_length = len(new_line_seq)
 
-    # height is the number of non zero element in shape_encoding_seq
-    height_decoded = np.sum(shape_encoding_seq)
+    rgb_seq = rgb_seq[:effective_seq_length] * 255
+    new_line_seq = new_line_seq[:effective_seq_length]
+    mask_seq = mask_seq[:effective_seq_length]
 
-    # width is the largest interval between two consecutive non zero elements in shape_encoding_seq
-    width_decoded = 0
-    true_indices = np.where(shape_encoding_seq)[0]
-    true_indices = np.insert(true_indices, 0, 0)
-    diffs = np.diff(true_indices)
-    if diffs.size > 0:
-        width_decoded = np.max(diffs)
+    if np.sum(new_line_seq) > 0:
+        # height is the number of non zero element in shape_encoding_seq
+        height_decoded = np.sum(new_line_seq)
+
+        # width is the largest interval between two consecutive non zero elements in shape_encoding_seq
+        new_line_indices = np.where(new_line_seq)[0]
+        new_line_indices = np.insert(new_line_indices, 0, 0)
+        diffs = np.diff(new_line_indices)
+        width_decoded = max(1, np.max(diffs))
+    else:
+        # no effective new line token, so we assume the height~width ratio is 1:1
+        height_decoded = int(math.sqrt(len(rgb_seq)))
+        width_decoded = len(rgb_seq) // height_decoded
+
+        # add positive new line token to new_line_seq, every width_decoded elements
+        new_line_seq[width_decoded-1::width_decoded] = 1
+
+        # in case of width_decoded * height_decoded < len(rgb_seq), truncate
+        effective_seq_length = width_decoded * height_decoded
+        rgb_seq = rgb_seq[:effective_seq_length]
+        new_line_seq = new_line_seq[:effective_seq_length]
+        mask_seq = mask_seq[:effective_seq_length]
 
     width_decoded += 1 # don't know why, but fix bug
-
+    
     segment = np.zeros((height_decoded, width_decoded, 3))
     mask = np.zeros((height_decoded, width_decoded))
 
-    # split segment_data into parts according to shape_encoding_seq=True positions, splited parts could be in different length
-    split_indices = np.where(shape_encoding_seq)[0]
-    split_indices += 1
-    split_segment_data = np.split(segment_data, split_indices)
-    split_segment_data = [x for x in split_segment_data if len(x) > 0]
+    # split segment_data into parts according to new_line_seq=True positions (splited parts could be in different length)
+    split_indices = np.where(new_line_seq)[0] + 1 
+    splited_rgb_lines = np.split(rgb_seq, split_indices)
+    splited_mask_lines = np.split(mask_seq, split_indices)
+    splited_rgb_lines = [x for x in splited_rgb_lines if len(x) > 0]
+    splited_mask_lines = [x for x in splited_mask_lines if len(x) > 0]
 
-    split_is_data = np.split(is_data_seq, split_indices)
-    split_is_data = [x for x in split_is_data if len(x) > 0]
-
-    for row_id in range(len(split_segment_data)):
-        segment_split = split_segment_data[row_id]
-        mask_split = split_is_data[row_id]
-        segment[row_id, :len(segment_split), :] = segment_split
-        mask[row_id, :len(mask_split)] = mask_split
+    for row_id in range(len(splited_rgb_lines)):
+        rgb_line = splited_rgb_lines[row_id]
+        mask_line = splited_mask_lines[row_id]
+        segment[row_id, :len(rgb_line), :] = rgb_line
+        mask[row_id, :len(mask_line)] = mask_line
     
     # apply mask to the segment: set all masked pixels to 255
-    segment[mask == 0] = 255  
+    segment[mask == 0] = 255
 
-    if width_decoded > 1:
-        segment = segment[:, :-1, :]
-    segment = transforms.ToPILImage()(segment.astype(np.uint8))
+    segment = segment[:, :-1, :]
+    mask = mask[:, :-1]
+    segment = segment.astype(np.uint8)
 
     return segment, mask
 
@@ -196,7 +205,7 @@ def get_datasets(model, expand_mask_ratio=0):
         expand_mask_ratio=expand_mask_ratio,
     )
 
-    return [coco_dataset, lvis_dataset, v3det_dataset, visual_genome_dataset, sa1b_dataset]
+    return [sa1b_dataset, coco_dataset, lvis_dataset, v3det_dataset, visual_genome_dataset]
 
 
 
@@ -261,16 +270,16 @@ def reconstruction_evaluation(model, datasets, num_steps=1, batch_size=1, visual
                 reconstructed = batch_reconstructed[i]
                 sample_info = batch_sample_info[i]
 
-                original_segment, original_mask = decode_image_from_seq(seq.float().cpu())
-                reconstructed_segment, reconstructed_mask = decode_image_from_seq(reconstructed.float().cpu())
+                original_segment, original_mask = decode_image_from_seq(seq.float().cpu().numpy())
+                reconstructed_segment, reconstructed_mask = decode_image_from_seq(reconstructed.float().cpu().numpy())
 
-                original_width, original_height = original_segment.size
-                reconstructed_width, reconstructed_height = reconstructed_segment.size
+                original_height, original_width = original_segment.shape[:2]
+                reconstructed_height, reconstructed_width = reconstructed_segment.shape[:2]
                 min_width = min(original_width, reconstructed_width)
                 min_height = min(original_height, reconstructed_height)
                 
                 pixel_rmse = np.sqrt(
-                    np.mean((np.array(original_segment) - np.array(reconstructed_segment.resize((original_width, original_height))))**2))
+                    np.mean((original_segment[:min_height, :min_width, :] - reconstructed_segment[:min_height, :min_width, :])**2))
                 overall_pixel_rmse += pixel_rmse
 
                 mask_rmse = np.sqrt(np.mean((original_mask[:min_height, :min_width] - reconstructed_mask[:min_height, :min_width])**2))
@@ -301,23 +310,30 @@ def reconstruction_evaluation(model, datasets, num_steps=1, batch_size=1, visual
 
 
 """
-python evaluation.py --cuda_visible_devices "4" --steps 50 150 250 350 450 550 650 750 850 950
-python evaluation.py --cuda_visible_devices "5" --steps 100 200 300 400 500 600 700 800 900 1000
+conda activate seq2seq-ae
+cd /home/dchenbs/workspace/Seq2Seq-AutoEncoder
+
+CUDA_VISIBLE_DEVICES=0 python evaluation.py \
+    --steps 1000 900 700 500 200 --model_dir_templete "runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step?k" 
+
+CUDA_VISIBLE_DEVICES=1 python evaluation.py \
+    --steps 100 200 400 600 800 --model_dir_templete "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step?k" 
 """
+
+
 if __name__=='__main__':
 
     parser = argparse.ArgumentParser(description='Process command line arguments.')
 
-    parser.add_argument('--cuda_visible_devices', type=str, required=True, help='CUDA_VISIBLE_DEVICES value')
     parser.add_argument('--steps', nargs='+', type=int, required=True, help='Steps for evaluation')
+    parser.add_argument('--model_dir_templete', type=str, required=True, help='Model directory templete')
 
     args = parser.parse_args()
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda_visible_devices
     steps = args.steps
-    model_dir_templete ='/home/dchenbs/workspace/Seq2Seq-AutoEncoder/runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step1000k'
+    model_dir_templete = args.model_dir_templete
 
     for step in args.steps:
-        model_dir = model_dir_templete.replace('1000k', f'{step}k')
+        model_dir = model_dir_templete.replace('step?k', f'step{step}k')
         print(f'Loading model from {model_dir}')
 
         model = Seq2SeqAutoEncoderModel.from_pretrained(model_dir).half().cuda().eval()
