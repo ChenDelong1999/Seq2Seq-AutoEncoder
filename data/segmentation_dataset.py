@@ -180,17 +180,20 @@ class V3DetDataset:
         self.split = split
         self.annotations_path = os.path.join(v3det_root, f'annotations/v3det_20231116_sam_masks_{split}.jsonl')
         self.images_path = os.path.join(v3det_root, f'images')
-        self.file = open(self.annotations_path, 'r')
         
         self.category_info = json.load(open(os.path.join(v3det_root, 'annotations/v3det_2023_v1_category_info.json')))
         self.num_categories = len(self.category_info)
 
         self.num_images = 0
         self.num_segments = 0
-        for line in self.file:
-            self.num_segments += len(json.loads(line)['objects'])
+        self.samples = []
+        for line in open(self.annotations_path, 'r'):
+            sample = json.loads(line)
+            self.samples.append(sample)
+            self.num_segments += len(sample['objects'])
             self.num_images += 1
-        self.file.seek(0)
+        self.image_index = -1
+
 
     def get_all_captions(self):
         captions = []
@@ -199,19 +202,22 @@ class V3DetDataset:
             captions.append(caption)
         return captions
 
-    def load_segments_from_one_image(self):
-        line = self.file.readline()
-        if not line:
-            self.file.seek(0)
-            line = self.file.readline()
-        line = json.loads(line)
+    def load_segments_from_one_image(self, image_index=None):
+        if image_index is None:
+            if self.image_index >= len(self.samples):
+                self.image_index = -1
+            self.image_index += 1
+            image_index = self.image_index
+            sample = self.samples[image_index]
 
-        image_path = os.path.join(self.images_path, line['image'])
+        image_path = os.path.join(self.images_path, sample['image'])
         image = np.array(Image.open(image_path).convert('RGB'))
-        objects = line['objects']
+        objects = sample['objects']
         segments = []
         for obj in objects:
             mask = decode(obj['mask'])
+            if mask.sum() == 0:
+                continue
             bbox = get_bounding_box(mask)
             
             x, y, w, h = bbox
@@ -262,6 +268,7 @@ class LVISDataset:
             name = ', '.join([synonym.replace('_', ' ') for synonym in cat['synonyms']]) 
             self.class_name_to_class_id_mapping[name] = cat['id']
         self.num_categories = len(self.class_name_to_class_id_mapping)
+        self.image_index = -1
 
     def get_all_captions(self):
         captions = []
@@ -290,7 +297,12 @@ class LVISDataset:
 
     def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
         if image_index is None:
-            img_id = random.choice(self.img_ids)
+            # image_index = np.random.randint(0, len(self.img_ids))
+            if self.image_index >= len(self.img_ids):
+                self.image_index = -1
+            self.image_index += 1
+            image_index = self.image_index
+            img_id = self.img_ids[image_index]
 
         img = self.lvis.load_imgs([img_id])[0]
         img_path = img['coco_url'].replace('http://images.cocodataset.org', os.path.join(self.coco_root, 'images'))
@@ -348,6 +360,7 @@ class COCODataset:
         self.num_images = len(self.img_ids)
         self.num_categories = len(self.coco.cats)
         self.id_to_name = {category['id']: category['name'] for category in self.coco.loadCats(self.coco.getCatIds())}
+        self.image_index = -1
 
     def get_all_captions(self):
         captions = [f'An image of a {self.id_to_name[category_id]}' for category_id in self.id_to_name.keys()]
@@ -373,7 +386,11 @@ class COCODataset:
 
     def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
         if image_index is None:
-            image_index = np.random.randint(0, len(self.img_ids))
+            # image_index = np.random.randint(0, len(self.img_ids))
+            if self.image_index >= len(self.img_ids):
+                self.image_index = -1
+            self.image_index += 1
+            image_index = self.image_index
 
         img_path = f"{self.coco_root}/images/{self.sub_dir}/{self.coco.loadImgs(self.img_ids[image_index])[0]['file_name']}"
         image = np.array(Image.open(img_path).convert('RGB'))
@@ -461,7 +478,7 @@ class SeqMaskDataset(Dataset):
             'caption': segment['caption'],
             'image_path': segment['image_path'],
             'bbox': segment['bbox'],
-            'text_feature': self.text_features[segment['caption']] if self.text_features is not None else None,
+            'text_feature': self.text_features[segment['caption']] if self.text_features is not None else [],
         }
         return segment['data_sequence'], segment_info
 
