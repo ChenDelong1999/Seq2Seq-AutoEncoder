@@ -90,33 +90,42 @@ def decode_image_from_seq(data_seq, new_line_threshold=0.5, mask_threshold=0.5):
 
     return segment, mask
 
+def pad_to_square(img):
+    # img: np array of h, w, 3
+    h, w = img.shape[:2]
+    if h > w:
+        pad = (h - w) // 2
+        img = np.pad(img, ((0, 0), (pad, pad), (0, 0)), mode='constant', constant_values=255)
+    elif w > h:
+        pad = (w - h) // 2
+        img = np.pad(img, ((pad, pad), (0, 0), (0, 0)), mode='constant', constant_values=255)
+    return img
 
-def visualize_segments(sample_info, original_segment, reconstructed_segment, original_mask, reconstructed_mask):
+def visualize_segments(sample_info, original_segment, reconstructed_segment):
 
-    fig, ax = plt.subplots(1, 5)
-    fig.set_size_inches(25, 5)
-    fig.suptitle(sample_info['name'])
+    original_segment = pad_to_square(original_segment)
+    reconstructed_segment = pad_to_square(reconstructed_segment)
 
-    ax[0].set_title('Original Image')
-    ax[0].imshow(Image.open(sample_info['image_path']))
+    fig, ax = plt.subplots(1, 3)
+    fig.set_size_inches(20, 5)
+    # fig.suptitle(sample_info['name'])
+
+    # ax[0].set_title('Original Image')
+    ax[0].imshow(Image.open(sample_info['image_path']), aspect='auto')
     x, y, w, h = sample_info['bbox']
-    rect = plt.Rectangle((x, y), w, h, fill=False, color='red')
+    rect = plt.Rectangle((x, y), w, h, fill=False, color='red', linewidth=4)
     ax[0].add_patch(rect)
+    ax[0].set_axis_off()
 
-    ax[1].set_title('Original Segment')
+    # ax[1].set_title('Original Segment')
     ax[1].imshow(original_segment)
+    ax[1].set_axis_off()
 
-    ax[2].set_title('Reconstructed Segment')
+    # ax[2].set_title('Reconstructed Segment')
     ax[2].imshow(reconstructed_segment)
-
-    ax[3].set_title('Original Mask')
-    ax[3].imshow(original_mask)
-
-    ax[4].set_title('Reconstructed Mask')
-    ax[4].imshow(reconstructed_mask)
+    ax[2].set_axis_off()
 
     return fig
-
     
 from sklearn.manifold import TSNE
 def tsne_visualize(latents, ids):
@@ -291,7 +300,7 @@ def reconstruction_evaluation(model, datasets, num_steps=1, batch_size=1, visual
                 # print(f"Pixel RMSE: {pixel_rmse:.4f}, Mask RMSE: {mask_rmse:.4f}, Aspect Ratio RMSE: {aspect_ratio_rmse:.4f}")
                 if visualize:
                     print(f"[{dataset.dataset.dataset_name}]: {sample_info['caption']}")
-                    fig = visualize_segments(sample_info, original_segment, reconstructed_segment, original_mask, reconstructed_mask)
+                    fig = visualize_segments(sample_info, original_segment, reconstructed_segment)
                     plt.show()
                     plt.close(fig)
 
@@ -314,10 +323,14 @@ conda activate seq2seq-ae
 cd /home/dchenbs/workspace/Seq2Seq-AutoEncoder
 
 CUDA_VISIBLE_DEVICES=0 python evaluation.py \
-    --steps 1000 900 700 500 200 --model_dir_templete "runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step?k" 
+    --steps 450 650 750 950 --model_dir_templete "runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step?k" 
+
+CUDA_VISIBLE_DEVICES=2 python evaluation.py \
+    --steps 150 250 400 --model_dir_templete "runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step?k" 
 
 CUDA_VISIBLE_DEVICES=1 python evaluation.py \
-    --steps 100 200 400 600 800 --model_dir_templete "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step?k" 
+    --steps 1000 900 850 --model_dir_templete "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step?k" 
+
 """
 
 
