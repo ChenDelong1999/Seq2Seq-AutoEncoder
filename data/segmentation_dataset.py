@@ -192,7 +192,7 @@ class V3DetDataset:
             self.samples.append(sample)
             self.num_segments += len(sample['objects'])
             self.num_images += 1
-        self.image_index = -1
+        self.sample_index = -1
 
 
     def get_all_captions(self):
@@ -202,13 +202,11 @@ class V3DetDataset:
             captions.append(caption)
         return captions
 
-    def load_segments_from_one_image(self, image_index=None):
-        if image_index is None:
-            if self.image_index >= len(self.samples):
-                self.image_index = -1
-            self.image_index += 1
-            image_index = self.image_index
-            sample = self.samples[image_index]
+    def load_segments_from_one_image(self):
+        if self.sample_index >= len(self.samples):
+            self.sample_index = -1
+        self.sample_index += 1
+        sample = self.samples[self.sample_index]
 
         image_path = os.path.join(self.images_path, sample['image'])
         image = np.array(Image.open(image_path).convert('RGB'))
@@ -295,14 +293,12 @@ class LVISDataset:
                         new_annotations.append(new_annotation)
         return new_annotations
 
-    def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
-        if image_index is None:
-            # image_index = np.random.randint(0, len(self.img_ids))
-            if self.image_index >= len(self.img_ids):
-                self.image_index = -1
-            self.image_index += 1
-            image_index = self.image_index
-            img_id = self.img_ids[image_index]
+    def load_segments_from_one_image(self):
+        # image_index = np.random.randint(0, len(self.img_ids))
+        if self.image_index >= len(self.img_ids):
+            self.image_index = -1
+        self.image_index += 1
+        img_id = self.img_ids[self.image_index]
 
         img = self.lvis.load_imgs([img_id])[0]
         img_path = img['coco_url'].replace('http://images.cocodataset.org', os.path.join(self.coco_root, 'images'))
@@ -384,19 +380,18 @@ class COCODataset:
                     new_annotations.append(new_annotation)
         return new_annotations
 
-    def load_segments_from_one_image(self, image_index=None, min_pixel_num=16):
-        if image_index is None:
-            # image_index = np.random.randint(0, len(self.img_ids))
-            if self.image_index >= len(self.img_ids):
-                self.image_index = -1
-            self.image_index += 1
-            image_index = self.image_index
+    def load_segments_from_one_image(self):
+        # image_index = np.random.randint(0, len(self.img_ids))
+        if self.image_index >= len(self.img_ids):
+            self.image_index = -1
+        self.image_index += 1
+        image_index = self.image_index
 
         img_path = f"{self.coco_root}/images/{self.sub_dir}/{self.coco.loadImgs(self.img_ids[image_index])[0]['file_name']}"
         image = np.array(Image.open(img_path).convert('RGB'))
 
         annotations = self.coco.loadAnns(self.coco.getAnnIds(imgIds=self.img_ids[image_index]))
-        annotations = self.preprocess_annotations(annotations, min_pixel_num)
+        annotations = self.preprocess_annotations(annotations, min_pixel_num=16)
         segments = []
         for annotation in annotations:
             label = annotation['category_id']
