@@ -17,6 +17,14 @@ mkdir weights && cd weights
 wget https://github.com/THU-MIG/RepViT/releases/download/v1.0/repvit_sam.pt
 ```
 
+
+```bash
+# TRL - Transformer Reinforcement Learning
+git clone https://github.com/huggingface/trl.git
+cd trl/
+pip install -e .
+```
+
 ### Data
 
 #### SA-1B
@@ -29,6 +37,11 @@ wget https://github.com/THU-MIG/RepViT/releases/download/v1.0/repvit_sam.pt
 https://www.lvisdataset.org/dataset
 
 116@hkust: /home/dchenbs/workspace/datasets/lvis,/home/dchenbs/workspace/datasets/coco2017
+
+#### ShareGPT4V
+
+https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
+
 
 ### Pre-Training
 
