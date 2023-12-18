@@ -345,17 +345,6 @@ def representation_evaluation(model, datasets, truncation=30000):
     return representation_evaluation_results, all_features
 
 
-"""
-conda activate seq2seq-ae
-cd /home/dchenbs/workspace/Seq2Seq-AutoEncoder
-
-CUDA_VISIBLE_DEVICES=4 python evaluation.py \
-    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step1950k" \
-    --reconstruction-step 20 --reconstruction-batch-size 5 --reconstruction-num-visualization 100 \
-    --representation-truncation 100
-
-"""
-
 if __name__=='__main__':
 
     parser = argparse.ArgumentParser(description='Process command line arguments.')
@@ -398,29 +387,29 @@ if __name__=='__main__':
             plt.close(fig)
 
     
-    # # representation evaluation
-    # datasets = get_datasets(model, datasets=['coco', 'lvis', 'v3det'])
-    # truncation = args.representation_truncation
-    # representation_evaluation_results, all_features = representation_evaluation(
-    #     model, 
-    #     datasets, 
-    #     truncation=truncation,
-    #     )
+    # representation evaluation
+    datasets = get_datasets(model, datasets=['coco', 'lvis', 'v3det'])
+    truncation = args.representation_truncation
+    representation_evaluation_results, all_features = representation_evaluation(
+        model, 
+        datasets, 
+        truncation=truncation,
+        )
     
-    # pprint.pprint(representation_evaluation_results)
-    # file_name = f'representation_evaluation_{truncation}samples'
-    # json.dump(representation_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
-    # pd.json_normalize(representation_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)
-    # print(f'>>> Saved Representation Evaluation Results to {model_dir}/{file_name}.json/csv')
+    pprint.pprint(representation_evaluation_results)
+    file_name = f'representation_evaluation_{truncation}samples'
+    json.dump(representation_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
+    pd.json_normalize(representation_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)
+    print(f'>>> Saved Representation Evaluation Results to {model_dir}/{file_name}.json/csv')
 
-    # os.makedirs(os.path.join(model_dir, 'representation_visualizations'), exist_ok=True)
-    # for dataset_name, features in all_features.items():
-    #     latents = features['latents']
-    #     ids = features['names']
-    #     tsne_fig = tsne_visualize(latents, ids, title=f'TSNE-{dataset_name}')
-    #     umap_fig = umap_visualize(latents, ids, title=f'UMAP-{dataset_name}')
-    #     tsne_fig.savefig(os.path.join(model_dir, 'representation_visualizations', f'tsne-{dataset_name}.png'), bbox_inches='tight', pad_inches=0)
-    #     umap_fig.savefig(os.path.join(model_dir, 'representation_visualizations', f'umap-{dataset_name}.png'), bbox_inches='tight', pad_inches=0)
-    #     plt.close(tsne_fig)
-    #     plt.close(umap_fig)
+    os.makedirs(os.path.join(model_dir, 'representation_visualizations'), exist_ok=True)
+    for dataset_name, features in all_features.items():
+        latents = features['latents']
+        ids = features['names']
+        tsne_fig = tsne_visualize(latents, ids, title=f'TSNE-{dataset_name}')
+        umap_fig = umap_visualize(latents, ids, title=f'UMAP-{dataset_name}')
+        tsne_fig.savefig(os.path.join(model_dir, 'representation_visualizations', f'tsne-{dataset_name}.png'), bbox_inches='tight', pad_inches=0)
+        umap_fig.savefig(os.path.join(model_dir, 'representation_visualizations', f'umap-{dataset_name}.png'), bbox_inches='tight', pad_inches=0)
+        plt.close(tsne_fig)
+        plt.close(umap_fig)
 

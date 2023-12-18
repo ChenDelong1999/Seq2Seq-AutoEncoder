@@ -8,6 +8,15 @@ conda activate seq2seq-ae
 pip install -r requirements.txt
 ```
 
+```bash
+# For RepViT-SAM
+git clone https://github.com/THU-MIG/RepViT
+cd RepViT/sam
+pip install -e .
+mkdir weights && cd weights
+wget https://github.com/THU-MIG/RepViT/releases/download/v1.0/repvit_sam.pt
+```
+
 ### Data
 
 #### SA-1B
@@ -49,4 +58,18 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
     --model_config 'runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step1000k' \
     --training_config 'configs/training_config/sa1b-HD2304@xiaobing739.json' \
     --new_data_seq_length 2304
+```
+
+
+### Evaluation
+
+```bash
+conda activate seq2seq-ae
+cd /home/dchenbs/workspace/Seq2Seq-AutoEncoder
+
+CUDA_VISIBLE_DEVICES=5 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2250k" \
+    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 100 \
+    --representation-truncation 30000
+
 ```
