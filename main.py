@@ -38,7 +38,7 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
 
         with autocast():
             prediction = model(data)
-            loss = seq2seq_autoencoder_loss(prediction, data, args.channel_info)
+            loss = seq2seq_autoencoder_loss(prediction, data, args.channel_info, args.num_queries)
             total_loss = sum(loss.values())
             total_loss = total_loss / args.gradient_accumulation_steps
             scaler.scale(total_loss).backward()
@@ -81,7 +81,7 @@ def train(model, dataloader, test_dataset, optimizer, scheduler, device, writer,
         step += 1
 
         if step!=0 and step % args.save_interval == 0 and args.rank == 0:   
-            checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_ep{epoch}_step{int((step+1)/1000)}k')
+            checkpoint_dir = os.path.join(args.checkpoint_dir, f'checkpoint_step{int((step+1)/1000)}k')
             save_hf_pretrained_model(model, checkpoint_dir)
             print(f'Saved checkpoint: {checkpoint_dir}')
 
