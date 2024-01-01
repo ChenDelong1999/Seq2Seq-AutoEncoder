@@ -10,15 +10,16 @@ from scipy.ndimage import label
 from torchvision import transforms
 import os
 import json
+import random
+
 try:
     from lvis import LVIS
+    import cv2
 except:
     pass # temporary fix for the lvis & opencv installation issue
-import random
-import cv2
 
-np.random.seed(42)
-random.seed(42)
+np.random.seed(1)
+random.seed(1)
 
 def get_bounding_box(mask):
     y_indices, x_indices = np.where(mask)
@@ -47,7 +48,7 @@ class SA1BDataset:
                         self.img_ids.append(os.path.join(subfolder_path, img_file[:-4]))
         print(f"SA1B dataset loaded. {len(self.img_ids)} images found.")
 
-        self.num_segments = 200000000
+        self.num_segments = 1000000000
         self.num_images = len(self.img_ids)
         self.num_categories = 1
 
