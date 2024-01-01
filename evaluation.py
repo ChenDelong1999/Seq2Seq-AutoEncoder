@@ -332,10 +332,10 @@ def representation_evaluation(model, datasets, truncation=30000):
         ids = np.array([name2id[name] for name in all_names])
 
         linaer_acc = linear_classification_evaluation(all_latents, ids, val_split_ratio=1/3)
-        # print(f'Linear classification accuracy: {linaer_acc}')
+        print(f'Linear classification accuracy: {linaer_acc}')
 
         knn_acc = knn_classification_evaluation(all_latents, ids, val_split_ratio=1/3, k=8)
-        # print(f'KNN classification accuracy: {knn_acc}')
+        print(f'KNN classification accuracy: {knn_acc}')
 
         representation_evaluation_results[dataset.dataset.dataset_name] = {
             'linear_classification_accuracy': linaer_acc,
@@ -354,6 +354,7 @@ if __name__=='__main__':
     parser.add_argument('--reconstruction-batch-size', type=int, default=50, help='Batch size for reconstruction evaluation')
     parser.add_argument('--reconstruction-num-visualization', type=int, default=50, help='Number of samples for reconstruction visualization')
 
+    parser.add_argument('--skip-representation-evaluation', action='store_true', help='Skip representation evaluation')
     parser.add_argument('--representation-truncation', type=int, default=30000, help='Number of samples for representation evaluation')
 
     args = parser.parse_args()
@@ -388,28 +389,29 @@ if __name__=='__main__':
 
     
     # representation evaluation
-    datasets = get_datasets(model, datasets=['coco', 'lvis', 'v3det'])
-    truncation = args.representation_truncation
-    representation_evaluation_results, all_features = representation_evaluation(
-        model, 
-        datasets, 
-        truncation=truncation,
-        )
-    
-    pprint.pprint(representation_evaluation_results)
-    file_name = f'representation_evaluation_{truncation}samples'
-    json.dump(representation_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
-    pd.json_normalize(representation_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)
-    print(f'>>> Saved Representation Evaluation Results to {model_dir}/{file_name}.json/csv')
+    if not args.skip_representation_evaluation:
+        datasets = get_datasets(model, datasets=['coco', 'lvis', 'v3det'])
+        truncation = args.representation_truncation
+        representation_evaluation_results, all_features = representation_evaluation(
+            model, 
+            datasets, 
+            truncation=truncation,
+            )
+        
+        pprint.pprint(representation_evaluation_results)
+        file_name = f'representation_evaluation_{truncation}samples'
+        json.dump(representation_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
+        pd.json_normalize(representation_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)
+        print(f'>>> Saved Representation Evaluation Results to {model_dir}/{file_name}.json/csv')
 
-    os.makedirs(os.path.join(model_dir, 'representation_visualizations'), exist_ok=True)
-    for dataset_name, features in all_features.items():
-        latents = features['latents']
-        ids = features['names']
-        tsne_fig = tsne_visualize(latents, ids, title=f'TSNE-{dataset_name}')
-        umap_fig = umap_visualize(latents, ids, title=f'UMAP-{dataset_name}')
-        tsne_fig.savefig(os.path.join(model_dir, 'representation_visualizations', f'tsne-{dataset_name}.png'), bbox_inches='tight', pad_inches=0)
-        umap_fig.savefig(os.path.join(model_dir, 'representation_visualizations', f'umap-{dataset_name}.png'), bbox_inches='tight', pad_inches=0)
-        plt.close(tsne_fig)
-        plt.close(umap_fig)
+        os.makedirs(os.path.join(model_dir, 'representation_visualizations'), exist_ok=True)
+        for dataset_name, features in all_features.items():
+            latents = features['latents']
+            ids = features['names']
+            tsne_fig = tsne_visualize(latents, ids, title=f'TSNE-{dataset_name}')
+            umap_fig = umap_visualize(latents, ids, title=f'UMAP-{dataset_name}')
+            tsne_fig.savefig(os.path.join(model_dir, 'representation_visualizations', f'tsne-{dataset_name}.png'), bbox_inches='tight', pad_inches=0)
+            umap_fig.savefig(os.path.join(model_dir, 'representation_visualizations', f'umap-{dataset_name}.png'), bbox_inches='tight', pad_inches=0)
+            plt.close(tsne_fig)
+            plt.close(umap_fig)
 
