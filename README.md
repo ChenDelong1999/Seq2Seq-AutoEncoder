@@ -60,6 +60,13 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
     --training_config 'configs/training_config/sa1b.json'
 ```
 
+```bash
+# 2023.12.28
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
+    --model_config 'runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep2_step3200k' \
+    --training_config 'configs/training_config/sa1b.json'
+```
+
 
 
 ### High-resolution Continual Pre-training
@@ -81,8 +88,33 @@ conda activate seq2seq-ae
 cd /home/dchenbs/workspace/Seq2Seq-AutoEncoder
 
 CUDA_VISIBLE_DEVICES=5 python evaluation.py \
-    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2250k" \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step3000k" \
     --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 100 \
-    --representation-truncation 30000
+    --representation-truncation 30000 --skip-representation-evaluation
+    
+CUDA_VISIBLE_DEVICES=5 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2950k" \
+    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
+    --representation-truncation 30000 --skip-representation-evaluation
+
+CUDA_VISIBLE_DEVICES=5 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2900k" \
+    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
+    --representation-truncation 30000 --skip-representation-evaluation
+
+CUDA_VISIBLE_DEVICES=5 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2850k" \
+    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
+    --representation-truncation 30000 --skip-representation-evaluation
+
+CUDA_VISIBLE_DEVICES=5 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2800k" \
+    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
+    --representation-truncation 30000 --skip-representation-evaluation
+
+CUDA_VISIBLE_DEVICES=5 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2750k" \
+    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
+    --representation-truncation 30000 --skip-representation-evaluation
 
 ```
