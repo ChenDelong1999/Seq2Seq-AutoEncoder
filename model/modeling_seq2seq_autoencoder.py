@@ -939,7 +939,7 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
     
     def encode(self, inputs_embeds):
 
-        attention_mask = inputs_embeds[:,:,4], # use "is_data" channel as attention mask, only attend to pixels and queries but not paddings
+        attention_mask = inputs_embeds[:,:,4] # use "is_data" channel as attention mask, only attend to pixels and queries but not paddings
         attention_mask[:, :-self.config.num_queries] = 1 # attend to queries
 
         last_hidden_state = self.encoder(
