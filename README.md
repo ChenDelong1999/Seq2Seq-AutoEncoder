@@ -61,7 +61,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
 ```
 
 ```bash
-# 2023.12.28
+# 2023.12.28 / 2024.01.02 updated encoder attention mask
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
     --model_config 'runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep2_step3200k' \
     --training_config 'configs/training_config/sa1b.json'
@@ -87,34 +87,105 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python main.py \
 conda activate seq2seq-ae
 cd /home/dchenbs/workspace/Seq2Seq-AutoEncoder
 
-CUDA_VISIBLE_DEVICES=5 python evaluation.py \
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
     --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step3000k" \
-    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 100 \
-    --representation-truncation 30000 --skip-representation-evaluation
-    
+    --loss-evaluation --loss-step 20 --loss-batch-size 50 \
+    --reconstruction-evaluation --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 100 \
+    --representation-evaluation --representation-truncation 30000 \
+```
+
+
+```bash
+# loss evaluation only (2024.01.02 12:05)
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step200k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step400k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step600k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step800k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step1000k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step1200k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step1400k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-04-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step1600k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-04-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step1800k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-04-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2000k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-04-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2200k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-04-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2400k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-04-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2600k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-04-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2800k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-04-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step3000k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+CUDA_VISIBLE_DEVICES=4 python evaluation.py \
+    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-04-bs16x1step-8gpu]/checkpoints/checkpoint_ep2_step3200k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
+
+
+```
+
+
+
+```bash
+# loss evaluation only (2024.01.02 12:05)
 CUDA_VISIBLE_DEVICES=5 python evaluation.py \
-    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2950k" \
-    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
-    --representation-truncation 30000 --skip-representation-evaluation
+    --model_dir "runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step200k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
 
 CUDA_VISIBLE_DEVICES=5 python evaluation.py \
-    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2900k" \
-    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
-    --representation-truncation 30000 --skip-representation-evaluation
+    --model_dir "runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step400k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
 
 CUDA_VISIBLE_DEVICES=5 python evaluation.py \
-    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2850k" \
-    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
-    --representation-truncation 30000 --skip-representation-evaluation
+    --model_dir "runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step600k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
 
 CUDA_VISIBLE_DEVICES=5 python evaluation.py \
-    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2800k" \
-    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
-    --representation-truncation 30000 --skip-representation-evaluation
+    --model_dir "runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step800k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
 
 CUDA_VISIBLE_DEVICES=5 python evaluation.py \
-    --model_dir "runs/Nov28_20-50-04_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep1_step2750k" \
-    --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 1 \
-    --representation-truncation 30000 --skip-representation-evaluation
+    --model_dir "runs/Nov14_17-31-06_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_ep0_step1000k" \
+    --loss-evaluation --loss-step 200 --loss-batch-size 50 \
 
 ```

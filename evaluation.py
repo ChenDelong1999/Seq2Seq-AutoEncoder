@@ -28,6 +28,7 @@ random.seed(42)
 
 from data.dataset import get_dataset, SeqMaskDataset, LVISDataset, V3DetDataset, COCODataset, VisualGenomeDataset, SA1BDataset
 from model import Seq2SeqAutoEncoderModel, Seq2SeqAutoEncoderConfig
+from loss import seq2seq_autoencoder_loss
 
 
 def decode_image_from_seq(data_seq, new_line_threshold=0.5, mask_threshold=0.5):
@@ -187,6 +188,42 @@ def get_datasets(model, expand_mask_ratio=0, datasets=['sa1b', 'coco', 'lvis', '
     return all_datasets
 
 
+@torch.no_grad()
+def loss_evaluation(model, datasets, num_steps=1, batch_size=1):
+
+    loss_evaluation_results = {}
+    for dataset in datasets:
+        print(f'Starting loss evaluation for {dataset.dataset.dataset_name} dataset')
+        summed_loss = {}
+        for key in dataset.channel_info.keys():
+            summed_loss[key] = 0
+
+        for step in tqdm.tqdm(range(num_steps)):
+            data = []
+            batch_sample_info = []
+            for i in range(batch_size):
+                this_data, this_sample_info = dataset[np.random.randint(0, len(dataset))]
+                data.append(this_data)
+                batch_sample_info.append(this_sample_info)
+
+            data = torch.stack(data).half().cuda()
+            prediction = model(data)
+            loss = seq2seq_autoencoder_loss(prediction, data, dataset.channel_info, model.config.num_queries)
+            for key in loss.keys():
+                summed_loss[key] += loss[key].item()
+
+            
+
+        loss_evaluation_result = {}
+        for key in summed_loss.keys():
+            loss_evaluation_result[key] = summed_loss[key] / num_steps
+        loss_evaluation_result = {k: round(v, 5) for k, v in loss_evaluation_result.items()}
+
+
+        print(loss_evaluation_result)
+        loss_evaluation_results[dataset.dataset.dataset_name] = loss_evaluation_result
+
+    return loss_evaluation_results
 
 @torch.no_grad()
 def reconstruction_evaluation(model, datasets, num_steps=1, batch_size=1, num_visualizations=50):
@@ -350,11 +387,17 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser(description='Process command line arguments.')
 
     parser.add_argument('--model_dir', type=str, required=True, help='Model directory')
+
+    parser.add_argument('--loss-evaluation', action='store_true', help='Perform loss evaluation')
+    parser.add_argument('--loss-step', type=int, default=20, help='Number of steps for loss evaluation')
+    parser.add_argument('--loss-batch-size', type=int, default=50, help='Batch size for loss evaluation')
+
+    parser.add_argument('--reconstruction-evaluation', action='store_true', help='Perform representation evaluation')
     parser.add_argument('--reconstruction-step', type=int, default=20, help='Number of steps for reconstruction evaluation')
     parser.add_argument('--reconstruction-batch-size', type=int, default=50, help='Batch size for reconstruction evaluation')
     parser.add_argument('--reconstruction-num-visualization', type=int, default=50, help='Number of samples for reconstruction visualization')
 
-    parser.add_argument('--skip-representation-evaluation', action='store_true', help='Skip representation evaluation')
+    parser.add_argument('--representation-evaluation', action='store_true', help='Perform representation evaluation')
     parser.add_argument('--representation-truncation', type=int, default=30000, help='Number of samples for representation evaluation')
 
     args = parser.parse_args()
@@ -363,33 +406,50 @@ if __name__=='__main__':
     print(f'Loading model from {model_dir}')
 
     model = Seq2SeqAutoEncoderModel.from_pretrained(model_dir).half().cuda().eval()
+    # loss evaluation
+    if args.loss_evaluation:
+        datasets = get_datasets(model, datasets=['sa1b', 'coco', 'lvis', 'v3det', 'visual_genome'])
+        num_steps = args.loss_step
+        batch_size = args.loss_batch_size
+        loss_evaluation_results = loss_evaluation(
+            model, 
+            datasets, 
+            num_steps=num_steps, 
+            batch_size=batch_size, 
+            )
+        pprint.pprint(loss_evaluation_results)
+        file_name = f'loss_evaluation_{num_steps*batch_size}samples'
+        json.dump(loss_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
+        pd.json_normalize(loss_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)
+        print(f'>>> Saved loss Evaluation Results to {model_dir}/{file_name}.json/csv')
     
     # reconstruction evaluation
-    datasets = get_datasets(model, datasets=['sa1b', 'coco', 'lvis', 'v3det', 'visual_genome'])
-    num_steps = args.reconstruction_step
-    batch_size = args.reconstruction_batch_size
-    reconstruction_evaluation_results, reconstruction_visualizations = reconstruction_evaluation(
-        model, 
-        datasets, 
-        num_steps=num_steps, 
-        batch_size=batch_size, 
-        num_visualizations=args.reconstruction_num_visualization
-        )
-    pprint.pprint(reconstruction_evaluation_results)
-    file_name = f'reconstruction_evaluation_{num_steps*batch_size}samples'
-    json.dump(reconstruction_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
-    pd.json_normalize(reconstruction_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)
-    print(f'>>> Saved Reconstruction Evaluation Results to {model_dir}/{file_name}.json/csv')
+    if args.reconstruction_evaluation:
+        datasets = get_datasets(model, datasets=['sa1b', 'coco', 'lvis', 'v3det', 'visual_genome'])
+        num_steps = args.reconstruction_step
+        batch_size = args.reconstruction_batch_size
+        reconstruction_evaluation_results, reconstruction_visualizations = reconstruction_evaluation(
+            model, 
+            datasets, 
+            num_steps=num_steps, 
+            batch_size=batch_size, 
+            num_visualizations=args.reconstruction_num_visualization
+            )
+        pprint.pprint(reconstruction_evaluation_results)
+        file_name = f'reconstruction_evaluation_{num_steps*batch_size}samples'
+        json.dump(reconstruction_evaluation_results, open(os.path.join(model_dir, f'{file_name}.json'), 'w'), indent=4)
+        pd.json_normalize(reconstruction_evaluation_results, sep='-').to_csv(os.path.join(model_dir, f'{file_name}.csv'), index=False)
+        print(f'>>> Saved Reconstruction Evaluation Results to {model_dir}/{file_name}.json/csv')
 
-    os.makedirs(os.path.join(model_dir, 'reconstruction_visualizations'), exist_ok=True)
-    for dataset_name, visualizations in reconstruction_visualizations.items():
-        for i, fig in enumerate(visualizations):
-            fig.savefig(os.path.join(model_dir, 'reconstruction_visualizations', f'{dataset_name}-{i}.png'), bbox_inches='tight', pad_inches=0)
-            plt.close(fig)
+        os.makedirs(os.path.join(model_dir, 'reconstruction_visualizations'), exist_ok=True)
+        for dataset_name, visualizations in reconstruction_visualizations.items():
+            for i, fig in enumerate(visualizations):
+                fig.savefig(os.path.join(model_dir, 'reconstruction_visualizations', f'{dataset_name}-{i}.png'), bbox_inches='tight', pad_inches=0)
+                plt.close(fig)
 
     
     # representation evaluation
-    if not args.skip_representation_evaluation:
+    if args.representation_evaluation:
         datasets = get_datasets(model, datasets=['coco', 'lvis', 'v3det'])
         truncation = args.representation_truncation
         representation_evaluation_results, all_features = representation_evaluation(
