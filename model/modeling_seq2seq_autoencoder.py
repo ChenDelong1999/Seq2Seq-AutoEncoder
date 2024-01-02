@@ -937,17 +937,24 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
     def get_decoder(self):
         return self.decoder
     
-    def encode(self, past_values):
-        last_hidden_state = self.encoder(inputs_embeds=past_values)['last_hidden_state'] # [batch_size, seq_len, d_model]
+    def encode(self, inputs_embeds):
+
+        attention_mask = inputs_embeds[:,:,4], # use "is_data" channel as attention mask, only attend to pixels and queries but not paddings
+        attention_mask[:, :-self.config.num_queries] = 1 # attend to queries
+
+        last_hidden_state = self.encoder(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            )['last_hidden_state'] # [batch_size, seq_len, d_model]
         latents = last_hidden_state[:, -self.config.num_queries:, :]
         latents = latents.reshape(latents.shape[0], -1)
         latents = self.bottleneck_projector(latents)
         return latents
     
-    def decode(self, latents, future_values):
+    def decode(self, latents, inputs_embeds):
         latents = latents @ self.bottleneck_projector.weight # -> [batch_size, d_model*num_queries]
         latents = latents.reshape(latents.shape[0], self.config.num_queries, self.config.d_model)
-        decoder_outputs = self.decoder(inputs_embeds=future_values, encoder_hidden_states=latents)
+        decoder_outputs = self.decoder(inputs_embeds=inputs_embeds, encoder_hidden_states=latents)
         return decoder_outputs
 
     def forward(
@@ -970,7 +977,7 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
 
         range_object = tqdm(range(self.config.model_seq_length-1)) if show_progress_bar else range(self.config.model_seq_length-1)
         for step in range_object:
-            decoder_outputs = self.decode(latents=encoder_latents, future_values=decoder_input)
+            decoder_outputs = self.decode(latents=encoder_latents, inputs_embeds=decoder_input)
             prediction = self.output_head(decoder_outputs.last_hidden_state)
             decoder_input = torch.cat((decoder_input, prediction[:, -1:, :]), dim=1)
         
