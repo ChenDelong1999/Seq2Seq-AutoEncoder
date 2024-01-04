@@ -16,6 +16,7 @@ open_clip_torch
 umap-learn
 einops
 git+https://github.com/ChaoningZhang/MobileSAM.git
+git+https://github.com/CASIA-IVA-Lab/FastSAM.git
 accelerate
 datasets
 peft
