@@ -27,7 +27,7 @@ np.random.seed(42)
 random.seed(42)
 
 from data.dataset import get_dataset, SeqMaskDataset, LVISDataset, V3DetDataset, COCODataset, VisualGenomeDataset, SA1BDataset
-from model import Seq2SeqAutoEncoderModel, Seq2SeqAutoEncoderConfig
+from model.seq2seq_autoencoder import Seq2SeqAutoEncoderModel, Seq2SeqAutoEncoderConfig
 from loss import seq2seq_autoencoder_loss
 
 
@@ -347,7 +347,7 @@ def representation_evaluation(model, datasets, truncation=30000):
         all_latents = []
         all_names = []
         print(f'Generating latent vectors for {dataset.dataset.dataset_name} dataset')
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=100, shuffle=False, num_workers=1, pin_memory=True, prefetch_factor=4)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=False, num_workers=1, pin_memory=True, prefetch_factor=4, drop_last=False)
             
         for batch_data, batch_sample_info in tqdm.tqdm(dataloader):
             batch_data = batch_data.half().cuda()

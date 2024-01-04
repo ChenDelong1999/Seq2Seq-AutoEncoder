@@ -21,7 +21,7 @@ device = torch.device('cuda')
 
 
 from data.dataset import get_dataset
-from model import Seq2SeqAutoEncoderConfig, Seq2SeqAutoEncoderModel
+from model.seq2seq_autoencoder import Seq2SeqAutoEncoderConfig, Seq2SeqAutoEncoderModel
 from utils import ddp_setup, get_params_count_summary, save_hf_pretrained_model
 from loss import seq2seq_autoencoder_loss
 
