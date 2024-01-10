@@ -17,7 +17,15 @@ umap-learn
 einops
 git+https://github.com/ChaoningZhang/MobileSAM.git
 git+https://github.com/CASIA-IVA-Lab/FastSAM.git
+git+https://github.com/yformer/EfficientSAM.git
 accelerate
 datasets
 peft
 bitsandbytes
+torchpack
+onnx
+gradio
+uvicorn
+fastapi
+pydantic
+openxlab
