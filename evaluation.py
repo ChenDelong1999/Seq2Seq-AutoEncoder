@@ -217,7 +217,7 @@ def loss_evaluation(model, datasets, num_steps=1, batch_size=1):
         loss_evaluation_result = {}
         for key in summed_loss.keys():
             loss_evaluation_result[key] = summed_loss[key] / num_steps
-        loss_evaluation_result = {k: round(v, 5) for k, v in loss_evaluation_result.items()}
+        loss_evaluation_result = {k: round(v, 8) for k, v in loss_evaluation_result.items()}
 
 
         print(loss_evaluation_result)
@@ -283,7 +283,7 @@ def reconstruction_evaluation(model, datasets, num_steps=1, batch_size=1, num_vi
             'mask_rmse': overall_mask_rmse/num_samples if overall_mask_rmse > 0 else 0,
             'aspect_ratio_rmse': overall_aspect_ratio_rmse/num_samples if overall_aspect_ratio_rmse > 0 else 0,
         }
-        reconstruction_evaluation_result = {k: round(v, 5) for k, v in reconstruction_evaluation_result.items()}
+        reconstruction_evaluation_result = {k: round(v, 8) for k, v in reconstruction_evaluation_result.items()}
 
         print(reconstruction_evaluation_result)
         reconstruction_evaluation_results[dataset.dataset.dataset_name] = reconstruction_evaluation_result
@@ -468,6 +468,11 @@ if __name__=='__main__':
         for dataset_name, features in all_features.items():
             latents = features['latents']
             ids = features['names']
+            # convert list of class name strings to list of class id integers
+            unique_ids = list(set(ids))
+            name2id = {name: i for i, name in enumerate(unique_ids)}
+            ids = np.array([name2id[name] for name in ids])
+            
             tsne_fig = tsne_visualize(latents, ids, title=f'TSNE-{dataset_name}')
             umap_fig = umap_visualize(latents, ids, title=f'UMAP-{dataset_name}')
             tsne_fig.savefig(os.path.join(model_dir, 'representation_visualizations', f'tsne-{dataset_name}.png'), bbox_inches='tight', pad_inches=0)
