@@ -98,10 +98,11 @@ CUDA_VISIBLE_DEVICES=4 python evaluation.py \
 ```bash
 
 CUDA_VISIBLE_DEVICES=4 python evaluation.py \
-    --model_dir "/home/dchenbs/workspace/Seq2Seq-AutoEncoder/runs/Jan02_11-49-33_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_step600k" \
+    --model_dir "/home/dchenbs/workspace/Seq2Seq-AutoEncoder/runs/Jan02_11-49-33_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_step1950k" \
     --loss-evaluation --loss-step 20 --loss-batch-size 50 \
     --reconstruction-evaluation --reconstruction-step 20 --reconstruction-batch-size 50 --reconstruction-num-visualization 100 \
     --representation-evaluation --representation-truncation 30000  
+
 ```
 
 
@@ -112,7 +113,8 @@ CUDA_VISIBLE_DEVICES=4 python evaluation.py \
 
 ```bash
 cd segmentation
-CUDA_VISIBLE_DEVICES=4 uvicorn segment_provider:app --host=0.0.0.0 --port=4000 --log-level=info
+
+CUDA_VISIBLE_DEVICES=5 uvicorn segment_provider:app --host=0.0.0.0 --port=5000 --log-level=info
 ```
 
 ```python

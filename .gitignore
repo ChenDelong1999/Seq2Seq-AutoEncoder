@@ -1,5 +1,6 @@
 RepViT
 segmentation/segment_provider_log.txt
+segmentation/cached_segments
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
