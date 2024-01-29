@@ -6,10 +6,13 @@ random.seed(0)
 import os
 from scipy.ndimage import label
 import time
+import pprint
 import torch
 import tqdm
+
 from PIL import Image
 from typing import Any, Dict, Generator,List
+from segment_anything.utils.amg import batched_mask_to_box
 
 class Segmenter():
 
@@ -17,6 +20,8 @@ class Segmenter():
             self, 
             model_name,
             checkpoint,
+
+            # SAM, FastSAM, MobileSAM, RepViT-SAM
             points_per_side = 32,
             points_per_batch = 64,
             pred_iou_thresh = 0.88,
@@ -28,12 +33,23 @@ class Segmenter():
             crop_overlap_ratio = 512 / 1500,
             crop_n_points_downscale_factor = 1,
             min_mask_region_area = 0,
+
+            # MobileSAMv2
+            num_box_prompts = 320,
+            object_conf = 0.4,
+            object_iou = 0.9,
+
             device = 'cuda',
             ):
         self.generator = None
         self.model_name = model_name
+
+        if self.model_name=='sam':
+            from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+            model_type = checkpoint.split('/')[-1][4:9]
+            sam = sam_model_registry[model_type](checkpoint=checkpoint).to(device).eval()
         
-        if self.model_name=='fast_sam':
+        elif self.model_name=='fast_sam':
             # Fast Segment Anything 
             # https://arxiv.org/abs/2306.12156 (21 Jun 2023)
             # https://github.com/CASIA-IVA-Lab/FastSAM
@@ -49,6 +65,14 @@ class Segmenter():
             from mobile_sam import sam_model_registry, SamAutomaticMaskGenerator
             sam = sam_model_registry["vit_t"](checkpoint=checkpoint).to(device).eval()
 
+        elif self.model_name=='repvit_sam':
+            # RepViT-SAM: Towards Real-Time Segmenting Anything
+            # https://arxiv.org/abs/2312.05760 (10 Dec 2023)
+            # https://github.com/THU-MIG/RepViT
+
+            from repvit_sam import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
+            sam = sam_model_registry["repvit"](checkpoint=checkpoint).to(device).eval()
+
         elif self.model_name=='mobile_sam_v2':
             # MobileSAMv2: Faster Segment Anything to Everything
             # https://arxiv.org/abs/2312.09579 (15 Dec 2023)
@@ -59,13 +83,13 @@ class Segmenter():
 
             ckpt_to_model_type = {
                 'l2.pt': 'efficientvit_l2',
-                # 'mobile_sam.pt': 'tiny_vit',
-                # 'sam_vit_h.pt': 'sam_vit_h',
+                'mobile_sam.pt': 'tiny_vit',
+                'sam_vit_h.pt': 'sam_vit_h',
             }
 
-            self.num_box_prompts = 320
-            self.object_conf = 0.4
-            self.object_iou = 0.9
+            self.num_box_prompts = num_box_prompts
+            self.object_conf = object_conf
+            self.object_iou = object_iou
 
             obj_model_path = os.path.join(os.path.dirname(checkpoint), 'ObjectAwareModel.pt')
             prompt_guided_path = os.path.join(os.path.dirname(checkpoint), 'Prompt_guided_Mask_Decoder.pt')
@@ -82,18 +106,10 @@ class Segmenter():
             self.generator = SamPredictor(sam)
             self.generator.ObjAwareModel = ObjAwareModel
 
-        elif self.model_name=='repvit_sam':
-            # RepViT-SAM: Towards Real-Time Segmenting Anything
-            # https://arxiv.org/abs/2312.05760 (10 Dec 2023)
-            # https://github.com/THU-MIG/RepViT
-
-            from repvit_sam import SamAutomaticMaskGenerator, SamPredictor, sam_model_registry
-            sam = sam_model_registry["repvit"](checkpoint=checkpoint).to(device).eval()
-
-        elif self.model_name=='sam':
-            from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
-            model_type = checkpoint.split('/')[-1][4:9]
-            sam = sam_model_registry[model_type](checkpoint=checkpoint).to(device).eval()
+            # for bluring in post prosessing
+            kernel_size = 7
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(kernel_size,kernel_size))
+            self.kernel = torch.from_numpy(kernel).float().unsqueeze(0).unsqueeze(0).to('cuda')
 
         else:
             raise NotImplementedError(f'Model {self.model_name} not implemented')
@@ -115,22 +131,33 @@ class Segmenter():
                 )
         
     @torch.no_grad()
-    def __call__(self, image_path, post_processing=True):  
+    def __call__(self, image_path, resize_to_max_of=-1, profiling=False):  
+        profile = {}
+        image = np.array(Image.open(image_path).convert('RGB'))
         
-        image = np.array(Image.open(image_path).convert('RGB')) 
+        if resize_to_max_of == -1 or (image.shape[0] <= resize_to_max_of and image.shape[1] <= resize_to_max_of):
+            height, width = image.shape[:2]
+        else:
+            if image.shape[0] > image.shape[1]:
+                height, width = resize_to_max_of, int(resize_to_max_of * image.shape[1] / image.shape[0])
+            else:
+                height, width = int(resize_to_max_of * image.shape[0] / image.shape[1]), resize_to_max_of
+            image = cv2.resize(image, (width, height))
+
         
         if self.model_name=='fast_sam':
-            everything_results = self.generator(Image.open(image_path).convert('RGB'), device='cuda', retina_masks=True, imgsz=1024, conf=0.4, iou=0.9,)
+            image = Image.fromarray(image)
+            everything_results = self.generator(image, device='cuda', retina_masks=True, imgsz=1024, conf=0.4, iou=0.9,)
             print(everything_results)
             masks = []
             for i in range(everything_results[0].boxes.data.shape[0]):
                 box = everything_results[0].boxes.data[i]
                 mask = everything_results[0].masks.data[i]
-                masks.append({'segmentation': mask.cpu().numpy().astype(bool), 'area': mask.sum(), 'bbox': box.cpu().tolist(),})
+                masks.append({'segmentation': mask.astype(bool), 'area': mask.sum(), 'bbox': box.cpu().tolist(),})
         
         elif self.model_name=='mobile_sam_v2':
-                    
-            image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+            
+            start = time.time()
             obj_results = self.generator.ObjAwareModel(
                 image, device='cuda',
                 retina_masks=True,
@@ -138,8 +165,13 @@ class Segmenter():
                 conf=self.object_conf,
                 iou=self.object_iou,
                 )
-            
+            profile['object detection'] = time.time()-start
+            start = time.time()
+
             self.generator.set_image(image)
+
+            profile['sam.set_image(image)'] = time.time()-start
+            start = time.time()
             
             input_boxes1 = obj_results[0].boxes.xyxy
             input_boxes = input_boxes1.cpu().numpy()
@@ -172,57 +204,75 @@ class Segmenter():
                     sam_mask_pre = (low_res_masks > self.generator.model.mask_threshold)*1.0
                     sam_mask.append(sam_mask_pre.squeeze(1))
             
-            masks = torch.cat(sam_mask).cpu().numpy().astype(bool)
-            masks = [{
-                'segmentation': mask, 
-                'area': mask.sum(), 
-                'bbox': list(cv2.boundingRect(mask.astype(np.uint8)))
-                } for mask in masks]
+            masks = torch.cat(sam_mask)
+            profile['mask generation'] = time.time()-start
+            start = time.time()
+
         else:
             masks = self.generator.generate(image)
+            for mask in masks:
+                if type(mask['segmentation']) != torch.Tensor:
+                    mask['segmentation'] = torch.from_numpy(mask['segmentation'])
+            masks = torch.stack([mask['segmentation'] for mask in masks]).to('cuda')
 
-        if post_processing:
-            masks = self.post_processing_masks(masks, image)
-        return masks
+        masks = self.post_processing_masks(masks)
+        profile['postproceessing'] = time.time()-start
+        
+        if profiling:
+            return masks, profile
+        else:
+            return masks
+        
+    def post_processing_masks(self, masks):
+        h, w = masks.shape[1:]
+        masks = masks.unsqueeze(1)
+        masks = torch.nn.functional.conv2d(masks, self.kernel, padding=self.kernel.shape[2]//2)[:,0].bool().cpu()
 
-    def expand_mask_blur(self, mask, kernel):
-        mask = mask.copy()
-        mask['segmentation'] = mask['segmentation'].astype(np.uint8)
-        blurred_mask = cv2.filter2D(mask['segmentation'],-1,kernel)
-        expanded_mask = (blurred_mask > 0).astype(bool)
-        return expanded_mask
+        boxes = batched_mask_to_box(masks)
+        # convert xyxy to xywh
+        boxes[:, 2] = boxes[:, 2] - boxes[:, 0]
+        boxes[:, 3] = boxes[:, 3] - boxes[:, 1]
 
-
-    def post_processing_masks(self, masks, image):
-
-        kernel_size = int(min(image.shape[:2]) * 0.015) // 2 * 2 + 1
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(kernel_size,kernel_size))
-
+        masks = masks.numpy()
         masked_area = None
         post_processed_masks = []
-        for mask in masks:
-            expanded_mask = self.expand_mask_blur(mask, kernel)
+        for i in range(len(masks)):
             post_processed_masks.append({
-                'segmentation': expanded_mask.astype(bool),
-                'area': expanded_mask.sum(),
-                'bbox': list(cv2.boundingRect(expanded_mask.astype(np.uint8))),
+                'segmentation': masks[i],
+                'area': int(masks[i].sum()),
+                'bbox': boxes[i].numpy().tolist(),
+                # 'bbox': list(cv2.boundingRect(expanded_mask_uint8)),
             })
             if masked_area is None:
-                masked_area = expanded_mask.astype(np.uint8)
+                masked_area = masks[0].astype(np.uint8)
             else:
-                masked_area[expanded_mask] += 1
+                masked_area[masks[0]] += 1
 
         non_masked_area = masked_area == 0
         labeled_mask, num_labels = label(non_masked_area)
-        
+
+        labeled_mask = torch.from_numpy(labeled_mask)
+        masks = torch.zeros((num_labels, h, w), dtype=torch.bool)
         for i in range(1, num_labels + 1):
+            mask = torch.where(labeled_mask == i, True, False)
+            masks[i-1] = mask
+
+        boxes = batched_mask_to_box(masks)
+        # convert xyxy to xywh
+        boxes[:, 2] = boxes[:, 2] - boxes[:, 0]
+        boxes[:, 3] = boxes[:, 3] - boxes[:, 1]
+
+        masks = masks.numpy()
+        for i in range(num_labels):
             post_processed_masks.append({
-                'segmentation': labeled_mask == i,
-                'area': (labeled_mask == i).sum(),
-                'bbox': list(cv2.boundingRect((labeled_mask == i).astype(np.uint8))),
+                'segmentation': masks[i],
+                'area': int(masks[i].sum()),
+                'bbox': boxes[i].numpy().tolist(),
+                # 'bbox': list(cv2.boundingRect(masks[i].astype(np.uint8))),
             })
+
         return post_processed_masks
-    
+
 
 def batch_iterator(batch_size: int, *args) -> Generator[List[Any], None, None]:
     assert len(args) > 0 and all(
@@ -237,6 +287,8 @@ def visualized_masks(masks, image):
     canvas = np.ones_like(image) * 255
     masks = sorted(masks, key=lambda x: x['area'], reverse=True)
     for mask in masks:
+        if type(mask['segmentation']) == torch.Tensor:
+            mask['segmentation'] = mask['segmentation'].cpu().numpy()
         average_color = np.mean(image[mask['segmentation'] == 1], axis=0)
         canvas[mask['segmentation'] == 1] = average_color
 

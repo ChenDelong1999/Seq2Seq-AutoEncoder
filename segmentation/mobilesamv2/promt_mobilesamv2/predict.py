@@ -8,6 +8,8 @@ class PromptModelPredictor(DetectionPredictor):
     def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         super().__init__(cfg, overrides, _callbacks)
         self.args.task = 'segment'
+        self.args.verbose = False
+
     def adjust_bboxes_to_image_border(self, boxes, image_shape, threshold=20):    
         h, w = image_shape
         boxes[:, 0] = torch.where(boxes[:, 0] < threshold, torch.tensor(
@@ -19,6 +21,7 @@ class PromptModelPredictor(DetectionPredictor):
         boxes[:, 3] = torch.where(boxes[:, 3] > h - threshold, torch.tensor(
             h, dtype=torch.float, device=boxes.device), boxes[:, 3])  # y2
         return boxes
+    
     def postprocess(self, preds, img, orig_imgs):
         p = ops.non_max_suppression(preds[0],
                                     self.args.conf,
@@ -30,7 +33,14 @@ class PromptModelPredictor(DetectionPredictor):
         results = []
         if len(p) == 0 or len(p[0]) == 0:
             print("No object detected.")
-            return results
+            # use random boxes
+            p0 = torch.rand(320, 38)
+            p0[:, [0,2]] *= img.shape[3]
+            p0[:, [1,3]] *= img.shape[2]
+            p0[:, 0] = torch.min(p0[:, 0], p0[:, 2]-1)
+            p0[:, 1] = torch.min(p0[:, 1], p0[:, 3]-1)
+            p = [p0]
+        
         full_box = torch.zeros_like(p[0][0])
         full_box[2], full_box[3], full_box[4], full_box[6:] = img.shape[3], img.shape[2], 1.0, 1.0
         full_box = full_box.view(1, -1)

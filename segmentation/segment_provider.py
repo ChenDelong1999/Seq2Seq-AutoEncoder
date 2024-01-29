@@ -4,18 +4,23 @@ import json
 import time
 import pickle
 import base64
+import pprint
 from segmentation import Segmenter
 
 app = FastAPI()
 
 class Input(BaseModel):
     content_lst: dict
-    typ: str
 
 class Response(BaseModel):
     result: dict
 
-segmenter = Segmenter('mobile_sam_v2', '/home/dchenbs/workspace/cache/sam_weights/mobile_sam_v2/l2.pt')
+# read args from segmnet_provider_config.json
+with open('segment_provider_config.json', 'r') as f:
+    config = json.load(f)
+    pprint.pprint(config)
+
+segmenter = Segmenter(config['model_name'], config['checkpoint'], **config['kwargs'])
 
 
 @app.post("/segment_provider",response_model=Response)        
@@ -24,7 +29,6 @@ async def segment_provider(request: Input):
 
     masks = segmenter(request.content_lst['img_path'], post_processing=request.content_lst['post_processing'])
     
-    # 将numpy数组转换为二进制数据，然后转换为字符串
     masks_bytes = pickle.dumps(masks)
     masks_str = base64.b64encode(masks_bytes).decode('utf-8')
 

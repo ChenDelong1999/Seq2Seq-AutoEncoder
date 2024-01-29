@@ -38,11 +38,6 @@ class ObjectAwareModel(YOLO):
         self.predictor.setup_model(model=self.model, verbose=False)
        
         return self.predictor(source, stream=stream)
-        # try:
-              
-        #     return self.predictor(source, stream=stream)
-        # except Exception as e:
-        #     return None
 
     def train(self, **kwargs):
         raise NotImplementedError("Currently, the training codes are on the way.")

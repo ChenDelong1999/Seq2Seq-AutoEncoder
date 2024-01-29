@@ -1,0 +1,9 @@
+{
+    "model_name": "mobile_sam_v2",
+    "checkpoint": "/home/dchenbs/workspace/cache/sam_weights/mobile_sam_v2/l2.pt",
+    "kwargs": {    
+        "num_box_prompts": 320,
+        "object_conf": 0.25,
+        "object_iou": 0.9
+    }
+}
