@@ -37,7 +37,6 @@ coverage.xml
 data/cache/*
 data/text_features/*
 !dataset/.gitkeep
-legacy/*
 runs/*
 
 checkpoints/*
