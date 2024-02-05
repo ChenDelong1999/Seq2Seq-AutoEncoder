@@ -22,14 +22,23 @@ from sharegpt4v import ShareGPT4V
 def main(args):
     os.makedirs(f'{args.cache_root}/{args.dataset_identifier}', exist_ok=True)
 
-    share_gpt4v_dataset = ShareGPT4V(os.path.join(args.sharegpt4v_path, f'{args.dataset_identifier}.json'), only_return_img_path=True)
-    share_gpt4v_dataset.validate_exist()
+    if 'clevr' in args.dataset_identifier:
+        _, split = args.dataset_identifier.split('_')
+        annotations = json.load(open(f'{args.dataset_path}/captions/{split}.json'))
+        all_paths = []
+        for sample in annotations:
+            all_paths.append(args.dataset_path + '/' + sample['img_path'])
+        all_paths = all_paths[:args.debug_cutoff]
 
-    all_paths = []
-    for img_path in share_gpt4v_dataset:
-        all_paths.append(img_path)
+    else:
+        share_gpt4v_dataset = ShareGPT4V(os.path.join(args.dataset_path, f'{args.dataset_identifier}.json'), only_return_img_path=True)
+        share_gpt4v_dataset.validate_exist()
 
-    all_paths = all_paths[:args.debug_cutoff]
+        all_paths = []
+        for img_path in share_gpt4v_dataset:
+            all_paths.append(img_path)
+
+        all_paths = all_paths[:args.debug_cutoff]
 
     all_paths = list(set(all_paths))
     print(f'Found {len(all_paths)} images in {args.dataset_identifier}')
@@ -91,7 +100,7 @@ if __name__ == '__main__':
         # sharegpt4v_instruct_gpt4-vision_cap100k
         # share-captioner_coco_lcs_sam_1246k_1107
         # sharegpt4v_mix665k_cap23k_coco-ap9k_lcs3k_sam9k_div2k
-    parser.add_argument('--sharegpt4v_path', required=True)
+    parser.add_argument('--dataset_path', required=True)
     parser.add_argument('--segmenter_config', required=True)
     parser.add_argument('--start_parts', type=int, default=0)
     parser.add_argument('--end_parts', type=int, default=0)
@@ -111,7 +120,7 @@ CUDA_VISIBLE_DEVICES=0 python cache_segmentations.py \
     --resize_to_max_of 1024 \
     --start_parts 0 --end_parts -1 --sample_per_part 10000 \
     --dataset_identifier sharegpt4v_instruct_gpt4-vision_cap100k \
-    --sharegpt4v_path /home/dchenbs/workspace/datasets/sharegpt4v/ShareGPT4V \
+    --dataset_path /home/dchenbs/workspace/datasets/sharegpt4v/ShareGPT4V \
     --segmenter_config /home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/mobile_sam_v2_l2.json \
     --cache_root /home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/cached_segments
 """
@@ -123,7 +132,7 @@ CUDA_VISIBLE_DEVICES=3 python cache_segmentations.py \
     --resize_to_max_of 1024 \
     --start_parts 18 --end_parts -1 --sample_per_part 10000 \
     --dataset_identifier sharegpt4v_mix665k_cap23k_coco-ap9k_lcs3k_sam9k_div2k \
-    --sharegpt4v_path /home/dchenbs/workspace/datasets/sharegpt4v/ShareGPT4V \
+    --dataset_path /home/dchenbs/workspace/datasets/sharegpt4v/ShareGPT4V \
     --segmenter_config /home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/mobile_sam_v2_l2.json \
     --cache_root /home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/cached_segments
 """
@@ -135,7 +144,19 @@ CUDA_VISIBLE_DEVICES=0 python cache_segmentations.py \
     --resize_to_max_of 1024 \
     --start_parts 0 --end_parts -1 --sample_per_part 10000 \
     --dataset_identifier share-captioner_coco_lcs_sam_1246k_1107 \
-    --sharegpt4v_path /home/dchenbs/workspace/datasets/sharegpt4v/ShareGPT4V \
+    --dataset_path /home/dchenbs/workspace/datasets/sharegpt4v/ShareGPT4V \
+    --segmenter_config /home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/mobile_sam_v2_l2.json \
+    --cache_root /home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/cached_segments
+"""
+
+"""CLEVR
+cd /home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation
+conda activate seq2seq-ae
+CUDA_VISIBLE_DEVICES=5 python cache_segmentations.py \
+    --resize_to_max_of 1024 \
+    --start_parts 0 --end_parts -1 --sample_per_part 5000 \
+    --dataset_identifier clevr_train \
+    --dataset_path /home/dchenbs/workspace/datasets/CLEVR_v1.0 \
     --segmenter_config /home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/mobile_sam_v2_l2.json \
     --cache_root /home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/cached_segments
 """
