@@ -122,3 +122,18 @@ CUDA_VISIBLE_DEVICES=5 uvicorn segment_provider:app --host=0.0.0.0 --port=5000 -
 
 
 ```
+
+
+### Training LMM
+
+```bash
+cd /home/dchenbs/workspace/Seq2Seq-AutoEncoder
+conda activate seq2seq-ae
+
+# single gpu
+# CUDA_VISIBLE_DEVICES=5 python main_lmm.py
+
+# multi-gpu
+CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node 2 main_lmm.py
+
+```
