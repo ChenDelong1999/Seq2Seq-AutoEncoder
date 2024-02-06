@@ -1,6 +1,7 @@
 import torch
 from utils import get_params_count_summary
 import json
+import tqdm
 import os
 os.environ["NCCL_P2P_LEVEL"] = "NVL"
 
@@ -11,6 +12,7 @@ from segmentation import Segmenter, visualized_masks
 from typing import Any, Dict, List, Optional, Tuple, Union 
 
 from data.sharegpt4v import ShareGPT4V
+from data.clevr import CLEVR
 from model.multimodal_tokenizer import MultimodalTokenizer
 from transformers import PreTrainedTokenizerBase
 
@@ -100,14 +102,20 @@ if __name__ == '__main__':
         'embed_tokens',
     ]
 
-    # tokenizer config
-    max_seg_per_img = 128
-    model_max_length = 256
-    cached_segments = '/home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/cached_segments/sharegpt4v_instruct_gpt4-vision_cap100k'
+    # [ShareGPT-4V] tokenizer & dataset config 
+    # max_seg_per_img = 128
+    # model_max_length = 256
+    # cached_segments = '/home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/cached_segments/sharegpt4v_instruct_gpt4-vision_cap100k'
+    # dataset_path = '/home/dchenbs/workspace/datasets/sharegpt4v/ShareGPT4V'
+    # dataset_identifier = 'sharegpt4v_instruct_gpt4-vision_cap100k.json' # or 'sharegpt4v_mix665k_cap23k_coco-ap9k_lcs3k_sam9k_div2k.json' or 'share-captioner_coco_lcs_sam_1246k_1107.json'
 
-    # dataset config
-    sharegpt4v_path = '/home/dchenbs/workspace/datasets/sharegpt4v/ShareGPT4V'
-    sharegpt4v_annotation = 'sharegpt4v_instruct_gpt4-vision_cap100k.json' # or 'sharegpt4v_mix665k_cap23k_coco-ap9k_lcs3k_sam9k_div2k.json' or 'share-captioner_coco_lcs_sam_1246k_1107.json'
+    # [CLEVR] tokenizer & dataset config 
+    max_seg_per_img = 32
+    model_max_length = 128
+    cached_segments = '/home/dchenbs/workspace/Seq2Seq-AutoEncoder/segmentation/cached_segments/clevr_train'
+    dataset_path = '/home/dchenbs/workspace/datasets/CLEVR_v1.0'
+    dataset_identifier = 'clevr_train'
+
 
 
     model = PhiForMultimodalModeling.from_pretrained(
@@ -170,22 +178,33 @@ if __name__ == '__main__':
         "[PAD]": tokenizer.convert_tokens_to_ids("[PAD]"),
     }
 
+    if 'sharegpt4v' in dataset_identifier:
+        annotation_file = os.path.join(dataset_path, dataset_identifier+'.json')
+        dataset = ShareGPT4V(annotation_file)
+        failed_samples = dataset.validate_exist(valid_img_paths=tokenizer.cache)
+    elif 'clevr' in dataset_identifier:
+        split = dataset_identifier.split('_')[-1]
+        dataset = CLEVR(dataset_path=dataset_path, split=split)
+        failed_samples = dataset.validate_exist(valid_img_paths=tokenizer.cache)
 
-    annotation_file = os.path.join(sharegpt4v_path, sharegpt4v_annotation)
-    dataset = ShareGPT4V(annotation_file)
-    failed_samples = dataset.validate_exist(valid_img_paths=tokenizer.cache)
+    # n_token = []
+    # for i in tqdm.tqdm(range(1000)):
+    #     inputs = tokenizer([dataset[i]])
+    #     n_token.append(len(inputs['input_ids'][0]))
+    # print(max(n_token))
+
 
     data_collator = DataCollatorForMultimodal(tokenizer)
 
     training_arguments = TrainingArguments(
         output_dir="runs/phi-2-multimodal",
-        per_device_train_batch_size=8,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=16,
+        gradient_accumulation_steps=2,
         learning_rate=1e-4,
         lr_scheduler_type="cosine",
         save_strategy="steps",
         save_steps=1000,
-        logging_steps=1000,
+        logging_steps=1,
         max_steps=20000,
         num_train_epochs=10,
         push_to_hub=False,

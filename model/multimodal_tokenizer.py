@@ -55,13 +55,13 @@ class MultimodalTokenizer(CodeGenTokenizerFast):
                     with open(os.path.join(cached_segments, cache_file), 'rb') as f:
                         this_cache = pickle.load(f)
                         cache.update(this_cache)
-                        print(f'added {len(this_cache)} cached segments from {cache_file}, total {len(cache)} cached segments now.')
+                        print(f'added {len(this_cache)} cached images from {cache_file}, total {len(cache)} cached images now.')
 
         for k, v in cache.items():
             if k not in self.cache:
                 self.cache[k] = v
 
-        print(f'Loaded {len(cache)} cached segments from {cached_segments}, total {len(self.cache)} cached segments now.')
+        print(f'Loaded {len(cache)} cached images from {cached_segments}, total {len(self.cache)} cached images now.')
 
     def get_sequences_and_bboxes(self, masks, image):
 
