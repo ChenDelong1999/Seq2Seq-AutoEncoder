@@ -29,6 +29,19 @@ from model.modeling_multimodal_phi import PhiForMultimodalModeling, load_seqae
 from model.phi import PhiForCausalLM, PhiConfig
 from dataclasses import dataclass
 
+# fix all random seed
+import random
+import numpy as np
+import torch
+
+random_seed = 42
+random.seed(random_seed)
+np.random.seed(random_seed)
+torch.manual_seed(random_seed)
+torch.cuda.manual_seed(random_seed)
+torch.cuda.manual_seed_all(random_seed)
+
+
 @dataclass
 class DataCollatorForMultimodal:
 
@@ -86,7 +99,7 @@ if __name__ == '__main__':
     base_llm_name = "microsoft/phi-2"
     w_segment_loss = 0.000
     w_bbox_loss = 0.000/(1000*1000)
-    seqae_batch_size = 256
+    seqae_batch_size = 512
     seqae_requires_grad = False
     seqae_path = '/home/dchenbs/workspace/Seq2Seq-AutoEncoder/runs/Jan02_11-49-33_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_step2800k'
 
@@ -170,7 +183,7 @@ if __name__ == '__main__':
 
 
     # model.resize_token_embeddings(len(tokenizer))
-    model.base_model.model.special_token_id_mappinmg = {
+    model.base_model.model.special_token_id_mapping = {
         "<|startofimage|>": tokenizer.convert_tokens_to_ids("<|startofimage|>"),
         "<|endofimage|>": tokenizer.convert_tokens_to_ids("<|endofimage|>"),
         "<|seg|>": tokenizer.convert_tokens_to_ids("<|seg|>"),
@@ -193,19 +206,22 @@ if __name__ == '__main__':
     #     n_token.append(len(inputs['input_ids'][0]))
     # print(max(n_token))
 
+    inputs = tokenizer([dataset[0]])
+    print(tokenizer.decode(inputs['input_ids'][0]))
+
 
     data_collator = DataCollatorForMultimodal(tokenizer)
 
     training_arguments = TrainingArguments(
         output_dir="runs/phi-2-multimodal",
         per_device_train_batch_size=16,
-        gradient_accumulation_steps=2,
+        gradient_accumulation_steps=1,
         learning_rate=1e-4,
         lr_scheduler_type="cosine",
         save_strategy="steps",
         save_steps=1000,
         logging_steps=1,
-        max_steps=20000,
+        max_steps=100000,
         num_train_epochs=10,
         push_to_hub=False,
         bf16=True,

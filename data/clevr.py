@@ -47,8 +47,8 @@ class CLEVR(torch.utils.data.Dataset):
 
 
     def process_clevr_sample(self, img_path, caption, start_path='<img_path>', end_path='</img_path>', human_turn='### Human: \n', gpt_turn='### AI: \n', eos_token='<|endoftext|>'):
-        result = f'Describe this image<img_path>{img_path}</img_path>{eos_token}\n'
-        result += f'Caption: {caption}{eos_token}'
+        result = f'{human_turn}Describe this image<img_path>{img_path}</img_path>{eos_token}\n'
+        result += f'{gpt_turn}{caption}{eos_token}'
         return result
 
     def __getitem__(self, index, only_return_img_path=False):
