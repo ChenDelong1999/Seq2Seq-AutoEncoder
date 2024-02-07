@@ -203,57 +203,100 @@ def load_seqae(model, seqae):
     model.segment_modeling_head = SegmentModelingHead(model.config.hidden_size, model.seqae.config.d_latent)
 
 
+# def prepare_segment_tokens(
+#         model,
+#         input_ids,
+#         segment_sequences,
+#         bboxes,
+#     ):
+
+#     bs = input_ids.shape[0]
+#     all_seg_bbox, all_seg_emb, all_seg_tokens, all_seg_position_ids = [], [], [], []
+#     """
+#     all_seg_bbox: raw bounding boxes 
+#         [batch_size, num_segments, 4]
+#     all_seg_emb: SeqAE encoder output embeddings 
+#         [batch_size, num_segments, d_seqae_latent]
+#     all_seg_tokens: LLM input tokens 
+#         [batch_size, num_segments, d_llm]
+#     all_seg_position_ids: position of <|seg|> in input_ids 
+#         [batch_size, num_segments]
+#     """
+#     for i in range(bs):
+#         if len(segment_sequences[i]) != 0: # if there is segments in this sample 
+#             # flatten the image_num axis, in case there are multiple images in one sample
+#             seg_seq = segment_sequences[i].flatten(start_dim=0, end_dim=1)
+#             if model.seqae_batch_size != -1:
+#                 seg_emb = []
+#                 for j in range(0, len(seg_seq), model.seqae_batch_size):
+#                     seg_emb.append(model.seqae.encode(seg_seq[j:j+model.seqae_batch_size]))
+#                 seg_emb = torch.cat(seg_emb, dim=0)
+#             else:
+#                 seg_emb = model.seqae.encode(seg_seq)
+            
+#             seg_tokens = model.visual_token_embedding(seg_emb)
+
+#             bbox = bboxes[i].flatten(start_dim=0, end_dim=1).to(dtype=model.dtype)
+#             bbox_positional_embeddings = model.visual_positional_embedding(bbox)
+
+#             # TODO: Masking of segments shall be done here
+#             seg_tokens += bbox_positional_embeddings
+
+#             all_seg_tokens.append(seg_tokens)
+#             all_seg_emb.append(seg_emb)
+#             all_seg_bbox.append(bbox)
+
+#         else:
+#             all_seg_tokens.append([])
+#             all_seg_emb.append([])
+#             all_seg_bbox.append([])
+
+#         # find the position of <|seg|> in input_ids
+#         seg_position_ids = torch.where(input_ids[i].clone().detach() == model.special_token_id_mapping["<|seg|>"])[0].tolist()
+#         assert len(seg_position_ids) == len(all_seg_tokens[i]), f"Number of <|seg|> ({len(seg_position_ids)}) does not match number of segments sequences ({len(all_seg_tokens[i])})"
+#         all_seg_position_ids.append(seg_position_ids)
+
+#     return all_seg_tokens, all_seg_emb, all_seg_bbox, all_seg_position_ids
+
 def prepare_segment_tokens(
         model,
         input_ids,
         segment_sequences,
         bboxes,
-
     ):
 
     bs = input_ids.shape[0]
     all_seg_bbox, all_seg_emb, all_seg_tokens, all_seg_position_ids = [], [], [], []
-    """
-    all_seg_bbox: raw bounding boxes 
-        [batch_size, num_segments, 4]
-    all_seg_emb: SeqAE encoder output embeddings 
-        [batch_size, num_segments, d_seqae_latent]
-    all_seg_tokens: LLM input tokens 
-        [batch_size, num_segments, d_llm]
-    all_seg_position_ids: position of <|seg|> in input_ids 
-        [batch_size, num_segments]
-    """
+
+    # Flatten all segment_sequences and bboxes on image_num and num_segments dimensions
+    flat_seg_seq = torch.cat([seg_seq.view(-1, seg_seq.size(-2), seg_seq.size(-1)) for seg_seq in segment_sequences])
+    flat_bboxes = torch.cat([bbox.view(-1, bbox.size(-1)) for bbox in bboxes])
+
+    # Encode all segments at once
+    if model.seqae_batch_size != -1:
+        seg_emb = []
+        for j in range(0, len(flat_seg_seq), model.seqae_batch_size):
+            seg_emb.append(model.seqae.encode(flat_seg_seq[j:j+model.seqae_batch_size]))
+        seg_emb = torch.cat(seg_emb, dim=0)
+    else:
+        seg_emb = model.seqae.encode(flat_seg_seq)
+
+    seg_tokens = model.visual_token_embedding(seg_emb)
+    bbox = flat_bboxes.to(dtype=model.dtype)
+    bbox_positional_embeddings = model.visual_positional_embedding(bbox)
+    seg_tokens += bbox_positional_embeddings
+
+    # Calculate the number of segments for each sample
+    seg_lengths = [image_num * num_segments for image_num, num_segments in zip([seg_seq.size(0) for seg_seq in segment_sequences], [seg_seq.size(1) for seg_seq in segment_sequences])]
+
+    # Split the results back into samples
+    all_seg_tokens = seg_tokens.split(seg_lengths)
+    all_seg_emb = seg_emb.split(seg_lengths)
+    all_seg_bbox = bbox.split(seg_lengths)
+
     for i in range(bs):
-        if len(segment_sequences[i]) != 0: # if there is segments in this sample 
-            # flatten the image_num axis, in case there are multiple images in one sample
-            seg_seq = segment_sequences[i].flatten(start_dim=0, end_dim=1)
-            if model.seqae_batch_size != -1:
-                seg_emb = []
-                for j in range(0, len(seg_seq), model.seqae_batch_size):
-                    seg_emb.append(model.seqae.encode(seg_seq[j:j+model.seqae_batch_size]))
-                seg_emb = torch.cat(seg_emb, dim=0)
-            else:
-                seg_emb = model.seqae.encode(seg_seq)
-            
-            seg_tokens = model.visual_token_embedding(seg_emb)
-
-            bbox = bboxes[i].flatten(start_dim=0, end_dim=1).to(dtype=model.dtype)
-            bbox_positional_embeddings = model.visual_positional_embedding(bbox)
-
-            # TODO: Masking of segments shall be done here
-            seg_tokens += bbox_positional_embeddings
-
-            all_seg_tokens.append(seg_tokens)
-            all_seg_emb.append(seg_emb)
-            all_seg_bbox.append(bbox)
-
-        else:
-            all_seg_tokens.append([])
-            all_seg_emb.append([])
-            all_seg_bbox.append([])
-
         # find the position of <|seg|> in input_ids
-        seg_position_ids = torch.where(input_ids[i].clone().detach() == model.special_token_id_mappinmg["<|seg|>"])[0].tolist()
+        seg_position_ids = torch.where(input_ids[i].clone().detach() == model.special_token_id_mapping["<|seg|>"])[0].tolist()
         assert len(seg_position_ids) == len(all_seg_tokens[i]), f"Number of <|seg|> ({len(seg_position_ids)}) does not match number of segments sequences ({len(all_seg_tokens[i])})"
         all_seg_position_ids.append(seg_position_ids)
 
