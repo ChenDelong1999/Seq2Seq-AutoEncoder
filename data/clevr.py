@@ -9,11 +9,14 @@ class CLEVR(torch.utils.data.Dataset):
 
     def __init__(
             self, dataset_path, only_return_img_path=False, 
-            split='train',):
+            split='train', sample_truncation=-1,
+            ):
 
         self.only_return_img_path = only_return_img_path
         annotation_file = os.path.join(dataset_path, 'captions', f'{split}.json')
         self.samples = json.load(open(annotation_file, 'r'))
+        if sample_truncation > 0:
+            self.samples = self.samples[:sample_truncation]
         self.dataset_path = dataset_path
 
 

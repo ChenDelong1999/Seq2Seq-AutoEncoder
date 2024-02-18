@@ -226,8 +226,8 @@ class MultimodalTokenizer(CodeGenTokenizerFast):
         # first, get the image size by finding the largest x+w and y+h
         # rightmost = torch.max(bboxes[:, 0] + bboxes[:, 2])
         # bottommost = torch.max(bboxes[:, 1] + bboxes[:, 3])
-        rightmost = torch.max(bboxes[:, 2])+1
-        bottommost = torch.max(bboxes[:, 3])+1
+        rightmost = torch.max(bboxes[:, 0]+bboxes[:, 2])
+        bottommost = torch.max(bboxes[:, 1]+bboxes[:, 3])
         canvas = np.zeros((int(bottommost), int(rightmost), 3)).astype(np.uint8)
 
         for i in range(len(segment_sequences)):

@@ -19,7 +19,7 @@ class Segmenter():
     def __init__(
             self, 
             model_name,
-            checkpoint,
+            checkpoint='',
 
             # SAM, FastSAM, MobileSAM, RepViT-SAM
             points_per_side = 32,
@@ -39,12 +39,23 @@ class Segmenter():
             object_conf = 0.4,
             object_iou = 0.9,
 
+            # square_patches
+            patch_size = 32,
+
+            # post processing
+            do_mask_expansion = True,
+
             device = 'cuda',
             ):
         self.generator = None
         self.model_name = model_name
+        self.do_mask_expansion = do_mask_expansion
 
-        if self.model_name=='sam':
+        if self.model_name=='square_patches':
+            self.patch_size = patch_size
+            self.generator = ''
+
+        elif self.model_name=='sam':
             from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
             model_type = checkpoint.split('/')[-1][4:9]
             sam = sam_model_registry[model_type](checkpoint=checkpoint).to(device).eval()
@@ -106,13 +117,13 @@ class Segmenter():
             self.generator = SamPredictor(sam)
             self.generator.ObjAwareModel = ObjAwareModel
 
-            # for bluring in post prosessing
-            kernel_size = 7
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(kernel_size,kernel_size))
-            self.kernel = torch.from_numpy(kernel).float().unsqueeze(0).unsqueeze(0).to('cuda')
-
         else:
             raise NotImplementedError(f'Model {self.model_name} not implemented')
+
+        # for bluring in post prosessing
+        kernel_size = 7
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(kernel_size,kernel_size))
+        self.kernel = torch.from_numpy(kernel).float().unsqueeze(0).unsqueeze(0).to('cuda')
         
         if self.generator is None:
             self.generator = SamAutomaticMaskGenerator(
@@ -131,7 +142,7 @@ class Segmenter():
                 )
         
     @torch.no_grad()
-    def __call__(self, image_path, resize_to_max_of=-1, profiling=False):  
+    def __call__(self, image_path, resize_to_max_of=-1, profiling=False, post_processing=True):  
         profile = {}
         image = np.array(Image.open(image_path).convert('RGB'))
         
@@ -144,8 +155,38 @@ class Segmenter():
                 height, width = int(resize_to_max_of * image.shape[0] / image.shape[1]), resize_to_max_of
             image = cv2.resize(image, (width, height))
 
+        if self.model_name=='square_patches':
+            # masks = []
+            # segmentation = torch.zeros((height, width))
+            # for y in range(0, height, self.patch_size):
+            #     for x in range(0, width, self.patch_size):
+            #         # print(x, y)
+            #         segmentation *= False
+            #         segmentation[y:y+self.patch_size, x:x+self.patch_size] = True
+            #         masks.append(segmentation)
+
+            # masks = torch.stack(masks).to('cuda')
+
+            # do the same thing but with more efficient way
+            h, w = height, width
+            n_h = h // self.patch_size
+            n_h += 1 if h % self.patch_size != 0 else 0
+
+            n_w = w // self.patch_size
+            n_w += 1 if w % self.patch_size != 0 else 0
+
+            n_patches = n_h * n_w
+
+            masks = torch.zeros((n_patches, h, w), dtype=torch.bool)
+            for i in range(n_h):
+                for j in range(n_w):
+                    y = i * self.patch_size
+                    x = j * self.patch_size
+                    masks[i*n_w+j, y:y+self.patch_size+1, x:x+self.patch_size+1] = True
+            
+            masks = masks.to('cuda', dtype=torch.float32)
         
-        if self.model_name=='fast_sam':
+        elif self.model_name=='fast_sam':
             image = Image.fromarray(image)
             everything_results = self.generator(image, device='cuda', retina_masks=True, imgsz=1024, conf=0.4, iou=0.9,)
             print(everything_results)
@@ -215,8 +256,10 @@ class Segmenter():
                     mask['segmentation'] = torch.from_numpy(mask['segmentation'])
             masks = torch.stack([mask['segmentation'] for mask in masks]).to('cuda')
 
-        masks = self.post_processing_masks(masks)
-        profile['postproceessing'] = time.time()-start
+        if post_processing:
+            start = time.time()
+            masks = self.post_processing_masks(masks)
+            profile['postproceessing'] = time.time()-start
         
         if profiling:
             return masks, profile
@@ -225,8 +268,12 @@ class Segmenter():
         
     def post_processing_masks(self, masks):
         h, w = masks.shape[1:]
-        masks = masks.unsqueeze(1)
-        masks = torch.nn.functional.conv2d(masks, self.kernel, padding=self.kernel.shape[2]//2)[:,0].bool().cpu()
+
+        if self.do_mask_expansion:
+            masks = masks.unsqueeze(1)
+            masks = torch.nn.functional.conv2d(masks, self.kernel, padding=self.kernel.shape[2]//2)[:,0]
+
+        masks = masks.bool().cpu()
 
         boxes = batched_mask_to_box(masks)
         # convert xyxy to xywh
@@ -246,7 +293,7 @@ class Segmenter():
             if masked_area is None:
                 masked_area = masks[0].astype(np.uint8)
             else:
-                masked_area[masks[0]] += 1
+                masked_area[masks[i]] += 1
 
         non_masked_area = masked_area == 0
         labeled_mask, num_labels = label(non_masked_area)

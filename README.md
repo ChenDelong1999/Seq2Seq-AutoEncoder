@@ -134,6 +134,6 @@ conda activate seq2seq-ae
 # CUDA_VISIBLE_DEVICES=5 python main_lmm.py
 
 # multi-gpu
-CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node 2 main_lmm.py
+CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node 4 main_lmm.py
 
 ```

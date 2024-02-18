@@ -190,8 +190,10 @@ class MultimodalModelingOutputWithPast(ModelOutput):
     past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
-    predicted_segment_latents: Optional[torch.FloatTensor] = None
-    predicted_segment_bboxes: Optional[torch.FloatTensor] = None
+    segment_tokens: Optional[List[torch.FloatTensor]] = None
+    segment_position_ids: Optional[List[int]] = None
+    # predicted_segment_latents: Optional[torch.FloatTensor] = None
+    # predicted_segment_bboxes: Optional[torch.FloatTensor] = None
     profiling: Optional[dict] = None
 
 
@@ -203,70 +205,21 @@ def load_seqae(model, seqae):
     model.segment_modeling_head = SegmentModelingHead(model.config.hidden_size, model.seqae.config.d_latent)
 
 
-# def prepare_segment_tokens(
-#         model,
-#         input_ids,
-#         segment_sequences,
-#         bboxes,
-#     ):
-
-#     bs = input_ids.shape[0]
-#     all_seg_bbox, all_seg_emb, all_seg_tokens, all_seg_position_ids = [], [], [], []
-#     """
-#     all_seg_bbox: raw bounding boxes 
-#         [batch_size, num_segments, 4]
-#     all_seg_emb: SeqAE encoder output embeddings 
-#         [batch_size, num_segments, d_seqae_latent]
-#     all_seg_tokens: LLM input tokens 
-#         [batch_size, num_segments, d_llm]
-#     all_seg_position_ids: position of <|seg|> in input_ids 
-#         [batch_size, num_segments]
-#     """
-#     for i in range(bs):
-#         if len(segment_sequences[i]) != 0: # if there is segments in this sample 
-#             # flatten the image_num axis, in case there are multiple images in one sample
-#             seg_seq = segment_sequences[i].flatten(start_dim=0, end_dim=1)
-#             if model.seqae_batch_size != -1:
-#                 seg_emb = []
-#                 for j in range(0, len(seg_seq), model.seqae_batch_size):
-#                     seg_emb.append(model.seqae.encode(seg_seq[j:j+model.seqae_batch_size]))
-#                 seg_emb = torch.cat(seg_emb, dim=0)
-#             else:
-#                 seg_emb = model.seqae.encode(seg_seq)
-            
-#             seg_tokens = model.visual_token_embedding(seg_emb)
-
-#             bbox = bboxes[i].flatten(start_dim=0, end_dim=1).to(dtype=model.dtype)
-#             bbox_positional_embeddings = model.visual_positional_embedding(bbox)
-
-#             # TODO: Masking of segments shall be done here
-#             seg_tokens += bbox_positional_embeddings
-
-#             all_seg_tokens.append(seg_tokens)
-#             all_seg_emb.append(seg_emb)
-#             all_seg_bbox.append(bbox)
-
-#         else:
-#             all_seg_tokens.append([])
-#             all_seg_emb.append([])
-#             all_seg_bbox.append([])
-
-#         # find the position of <|seg|> in input_ids
-#         seg_position_ids = torch.where(input_ids[i].clone().detach() == model.special_token_id_mapping["<|seg|>"])[0].tolist()
-#         assert len(seg_position_ids) == len(all_seg_tokens[i]), f"Number of <|seg|> ({len(seg_position_ids)}) does not match number of segments sequences ({len(all_seg_tokens[i])})"
-#         all_seg_position_ids.append(seg_position_ids)
-
-#     return all_seg_tokens, all_seg_emb, all_seg_bbox, all_seg_position_ids
-
 def prepare_segment_tokens(
         model,
-        input_ids,
         segment_sequences,
         bboxes,
     ):
+    """
+    all_seg_bbox: raw bounding boxes 
+        [batch_size, num_segments, 4]
+    all_seg_emb: SeqAE encoder output embeddings 
+        [batch_size, num_segments, d_seqae_latent]
+    all_seg_tokens: LLM input tokens
+        [batch_size, num_segments, d_llm]
+    """
 
-    bs = input_ids.shape[0]
-    all_seg_bbox, all_seg_emb, all_seg_tokens, all_seg_position_ids = [], [], [], []
+    all_seg_tokens = []
 
     # Flatten all segment_sequences and bboxes on image_num and num_segments dimensions
     flat_seg_seq = torch.cat([seg_seq.view(-1, seg_seq.size(-2), seg_seq.size(-1)) for seg_seq in segment_sequences])
@@ -294,13 +247,42 @@ def prepare_segment_tokens(
     all_seg_emb = seg_emb.split(seg_lengths)
     all_seg_bbox = bbox.split(seg_lengths)
 
-    for i in range(bs):
-        # find the position of <|seg|> in input_ids
-        seg_position_ids = torch.where(input_ids[i].clone().detach() == model.special_token_id_mapping["<|seg|>"])[0].tolist()
-        assert len(seg_position_ids) == len(all_seg_tokens[i]), f"Number of <|seg|> ({len(seg_position_ids)}) does not match number of segments sequences ({len(all_seg_tokens[i])})"
-        all_seg_position_ids.append(seg_position_ids)
+    return all_seg_tokens
 
-    return all_seg_tokens, all_seg_emb, all_seg_bbox, all_seg_position_ids
+
+def get_seg_position_ids(model, input_ids):
+    # find the position of <|seg|> in input_ids
+    all_seg_position_ids = []
+    for i in range(input_ids.size(0)):
+        seg_position_ids = torch.where(input_ids[i].clone().detach() == model.special_token_id_mapping["<|seg|>"])[0].tolist()
+        all_seg_position_ids.append(seg_position_ids)
+    return all_seg_position_ids
+
+
+def get_segment_tokens_cache(segment_sequences, bboxes, segment_tokens):
+
+    bs = len(segment_sequences)
+    assert bs == len(bboxes) == len(segment_tokens)
+
+    keys = []
+    values = []
+
+    for i in range(bs):
+        segment_sequences[i] = torch.flatten(segment_sequences[i], 0, 1)
+        bboxes[i] = torch.flatten(bboxes[i], 0, 1)
+        num_segments = segment_sequences[i].size(0)
+
+        assert num_segments == bboxes[i].size(0) == segment_tokens[i].size(0)
+
+        for j in range(num_segments):
+            avg_seq = segment_sequences[i][j].mean(dim=0)
+            key = torch.cat([avg_seq, bboxes[i][j]])
+            value = segment_tokens[i][j]
+
+            keys.append(key)
+            values.append(value)
+
+    return keys, values
 
 
 class PhiForMultimodalModeling(PhiForCausalLM):
@@ -326,7 +308,9 @@ class PhiForMultimodalModeling(PhiForCausalLM):
         self.w_bbox_loss = w_bbox_loss
         self.seqae_batch_size = seqae_batch_size
         self.seqae_requires_grad = seqae_requires_grad
-        # self.lm_ignore_index = self.config.lm_ignore_index
+        self.lm_ignore_index = None
+
+        self.seg_token_cache = {}
 
 
     def forward(
@@ -335,7 +319,9 @@ class PhiForMultimodalModeling(PhiForCausalLM):
             # a list of num `batch_size` elements, each element is a tensor of [image_num, num_segments, seq_length, input_channels]
         bboxes: list,
             # a list of num `batch_size` elements, each element is a tensor of [image_num, num_segments, 4] representing bounding boxes in x, y, w, h
-
+        segment_tokens: Optional[List[torch.FloatTensor]] = None,
+            # a list of num `batch_size` elements, each element is a tensor of [num_segments, d_llm]
+            # cached segment tokens, if not None, will be used instead of encoding segment_sequences
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -359,10 +345,11 @@ class PhiForMultimodalModeling(PhiForCausalLM):
         step_start = time.time()
         start = time.time()
 
-        with torch.no_grad() if not self.seqae_requires_grad else torch.enable_grad():
-            all_seg_tokens, all_seg_emb, all_seg_bbox, all_seg_position_ids = prepare_segment_tokens(
-                self, input_ids, segment_sequences, bboxes
-            )
+        if segment_tokens is None:
+            with torch.no_grad() if not self.seqae_requires_grad else torch.enable_grad():
+                segment_tokens = prepare_segment_tokens(self, segment_sequences, bboxes)
+
+        all_seg_position_ids = get_seg_position_ids(self, input_ids)
 
         profiling['[time]/Segment Embedding'] = time.time() - start
         start = time.time()
@@ -378,7 +365,7 @@ class PhiForMultimodalModeling(PhiForCausalLM):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            segment_tokens=all_seg_tokens,
+            segment_tokens=segment_tokens,
             segment_position_ids=all_seg_position_ids,
         )
 
@@ -395,7 +382,7 @@ class PhiForMultimodalModeling(PhiForCausalLM):
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
+            loss_fct = CrossEntropyLoss(ignore_index=self.lm_ignore_index)
             shift_logits = shift_logits.view(-1, self.config.vocab_size)
             shift_labels = shift_labels.view(-1)
             # Enable model parallelism
@@ -415,8 +402,8 @@ class PhiForMultimodalModeling(PhiForCausalLM):
             logits=logits, 
             past_key_values=past_key_values,
             hidden_states=hidden_states,
-            predicted_segment_latents=None,
-            predicted_segment_bboxes=None,
+            segment_tokens=segment_tokens,
+            segment_position_ids=all_seg_position_ids,
             profiling=profiling,
             )
 
@@ -427,7 +414,22 @@ class PhiForMultimodalModeling(PhiForCausalLM):
 
         model_inputs["segment_sequences"] = kwargs.get("segment_sequences", None)
         model_inputs["bboxes"] = kwargs.get("bboxes", None)
+        model_inputs["segment_tokens"] = kwargs.get("segment_tokens", None)
 
         return model_inputs
+    
+    def _update_model_kwargs_for_generation(
+        self,
+        outputs: ModelOutput,
+        model_kwargs: Dict[str, Any],
+        is_encoder_decoder: bool = False,
+        standardize_cache_format: bool = False,
+    ) -> Dict[str, Any]:
+        model_kwargs = super()._update_model_kwargs_for_generation(outputs, model_kwargs, is_encoder_decoder, standardize_cache_format)
+
+        # reuse SeqAE encoded segment tokens
+        model_kwargs["segment_tokens"] = outputs.segment_tokens
+
+        return model_kwargs
 
         

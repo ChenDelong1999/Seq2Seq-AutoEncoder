@@ -17,7 +17,8 @@ from transformers.modeling_outputs import (
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 from .configuration_seq2seq_autoencoder import Seq2SeqAutoEncoderConfig
-
+import os
+import pickle
 
 logger = logging.get_logger(__name__)
 
@@ -928,8 +929,33 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
             self.loss = torch.nn.L1Loss()
         else:
             raise ValueError(f"loss {config.loss} not supported")
-
+        
+        self.caching_latents = False
         self.post_init()
+
+    def enable_caching_latents(self, cache_dir, use_existing=False, cache_limit=10000000):
+
+        self.caching_latents = True
+        self.cached_segmnets = {}
+        self.cache_limit = cache_limit
+        self.cache_dir = cache_dir
+        
+        existing_file = os.path.join(cache_dir, f"cached_latents.pkl")
+        if os.path.exists(existing_file) and use_existing:
+            with open(existing_file, 'rb') as f:
+                self.cached_segmnets = pickle.load(f)
+            print(f"Loaded {len(self.cached_segmnets)} latents from {existing_file}")
+
+        print(f"Latent caching enabled, cache limit: {cache_limit}")
+
+    def save_cached_latents(self):
+        if not self.caching_latents:
+            print("caching_latents is not enabled, nothing to save")
+            return
+        cache_file = os.path.join(self.cache_dir, f"cached_latents.pkl")
+        with open(cache_file, 'wb') as f:
+            pickle.dump(self.cached_segmnets, f)
+        print(f"cached {len(self.cached_segmnets)} latents to {cache_file}")
 
     def get_encoder(self):
         return self.encoder
@@ -938,17 +964,65 @@ class Seq2SeqAutoEncoderModel(Seq2seqAutoencoderPreTrainedModel):
         return self.decoder
     
     def encode(self, inputs_embeds):
+        # inputs_embeds: [batch_size, seq_len, d_model]
 
-        attention_mask = inputs_embeds[:,:,4] # use "is_data" channel as attention mask, only attend to pixels and queries but not paddings
-        attention_mask[:, :-self.config.num_queries] = 1 # attend to queries
+        def do_encode(inputs_embeds):
+            attention_mask = inputs_embeds[:,:,4] # use "is_data" channel as attention mask, only attend to pixels and queries but not paddings
+            attention_mask[:, :-self.config.num_queries] = 1 # attend to queries
 
-        last_hidden_state = self.encoder(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            )['last_hidden_state'] # [batch_size, seq_len, d_model]
-        latents = last_hidden_state[:, -self.config.num_queries:, :]
-        latents = latents.reshape(latents.shape[0], -1)
-        latents = self.bottleneck_projector(latents)
+            last_hidden_state = self.encoder(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                )['last_hidden_state'] # [batch_size, seq_len, d_model]
+            encoded_latents = last_hidden_state[:, -self.config.num_queries:, :]
+            encoded_latents = encoded_latents.reshape(encoded_latents.shape[0], -1)
+            encoded_latents = self.bottleneck_projector(encoded_latents)
+            
+            return encoded_latents
+
+        if self.caching_latents:
+            bs = inputs_embeds.size(0)
+            dtype = self.bottleneck_projector.weight.dtype
+            
+            keys = inputs_embeds.mean(dim=[1]).cpu().numpy().tolist()
+            keys = [str(key) for key in keys]
+            keys = np.array(keys)
+
+            hitted_indexes = []
+            not_hitted_indexes = []
+            retrieved_latents = []
+
+            for i, key in enumerate(keys):
+                if key in self.cached_segmnets:
+                    hitted_indexes.append(i)
+                    retrieved_latents.append(self.cached_segmnets[key])
+                else:
+                    not_hitted_indexes.append(i)
+
+            latents = torch.zeros(bs, self.config.d_latent, device=inputs_embeds.device, dtype=dtype)
+
+            if len(hitted_indexes) > 0:
+                retrieved_latents = torch.tensor(np.array(retrieved_latents), device=inputs_embeds.device, dtype=dtype)
+                latents[hitted_indexes] = retrieved_latents
+
+            if len(not_hitted_indexes) > 0:
+                inputs_embeds = inputs_embeds[not_hitted_indexes]
+                encoded_latents = do_encode(inputs_embeds)
+                
+                latents = latents.to(dtype=encoded_latents.dtype)
+                latents[not_hitted_indexes] = encoded_latents
+
+                # key is the avg of input_embeds (do average on seq_len, d_model), resulting in a [batch_size] tensor
+                keys = keys[not_hitted_indexes]
+                values = encoded_latents.to(torch.float).cpu().numpy()
+                for key, value in zip(keys, values):
+                    if len(self.cached_segmnets) < self.cache_limit:
+                        self.cached_segmnets[key] = value
+                    else:
+                        break
+        else:
+            latents = do_encode(inputs_embeds)
+
         return latents
     
     def decode(self, latents, inputs_embeds):
