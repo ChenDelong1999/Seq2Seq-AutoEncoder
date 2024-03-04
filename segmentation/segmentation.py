@@ -330,18 +330,21 @@ def batch_iterator(batch_size: int, *args) -> Generator[List[Any], None, None]:
         yield [arg[b * batch_size : (b + 1) * batch_size] for arg in args]
 
     
-def visualized_masks(masks, image):
+def visualized_masks(masks, image, countor_thickness=1, countor_color=(200, 200, 200), average_color=True):
     canvas = np.ones_like(image) * 255
     masks = sorted(masks, key=lambda x: x['area'], reverse=True)
     for mask in masks:
         if type(mask['segmentation']) == torch.Tensor:
             mask['segmentation'] = mask['segmentation'].cpu().numpy()
-        average_color = np.mean(image[mask['segmentation'] == 1], axis=0)
-        canvas[mask['segmentation'] == 1] = average_color
+        if average_color:
+            average_color = np.mean(image[mask['segmentation'] == 1], axis=0)
+            canvas[mask['segmentation'] == 1] = average_color
+        else:
+            canvas[mask['segmentation'] == 1] = image[mask['segmentation'] == 1]
 
         # visualize segment boundary
         contours, _ = cv2.findContours(mask['segmentation'].astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(canvas, contours, -1, (200, 200, 200), 1)
+        cv2.drawContours(canvas, contours, -1, countor_color, countor_thickness)
 
     return canvas
 

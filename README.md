@@ -105,8 +105,21 @@ CUDA_VISIBLE_DEVICES=4 python evaluation.py \
 
 ```
 
+### Pre-Training of Linear Autoencoder
 
----
+```bash
+# 2024.02.19
+CUDA_VISIBLE_DEVICES=0 python main.py \
+    --model_config 'configs/model_config/linear.json' \
+    --training_config 'configs/training_config/sa1b@hkust116.json'
+```
+
+```bash
+# 2024.02.19
+CUDA_VISIBLE_DEVICES=1 python main.py \
+    --model_config 'configs/model_config/linear.json' \
+    --training_config 'configs/training_config/clevr_patch@hkust116.json'
+```
 
 
 ### Segment Provider
@@ -134,6 +147,6 @@ conda activate seq2seq-ae
 # CUDA_VISIBLE_DEVICES=5 python main_lmm.py
 
 # multi-gpu
-CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node 4 main_lmm.py
+CUDA_VISIBLE_DEVICES=2,3,4,5 torchrun --nproc_per_node 4 main_lmm.py
 
 ```

@@ -23,7 +23,6 @@ from transformers import (
     AutoModelForCausalLM
 )
 from peft import LoraConfig, get_peft_model
-from model.seq2seq_autoencoder import Seq2SeqAutoEncoderModel
 
 from model.modeling_multimodal_phi import PhiForMultimodalModeling, load_seqae
 from model.phi import PhiForCausalLM, PhiConfig
@@ -101,7 +100,7 @@ if __name__ == '__main__':
     patch_size = 32
     max_seg_per_img = 150  
     square_patches = True
-    output_dir="runs/phi-2-multimodal/clevr-patchlmm(32)-5ep-lora(32)-bs64-lr1e-4"
+    output_dir="runs/phi-2-multimodal/clevr-patchlmm(32)-50ep-lora(64)-bs32-lr1e-4"
     
     # 80x80
     # patch_size = 80
@@ -112,7 +111,7 @@ if __name__ == '__main__':
     # # segment-based
     # square_patches = False
     # max_seg_per_img = 32
-    # output_dir="runs/phi-2-multimodal/clevr-seglmm-5ep-lora(64)-bs16-lr1e-4"
+    # output_dir="runs/phi-2-multimodal/clevr-seglmm-10ep-lora(64)-bs32-lr1e-4"
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
@@ -122,7 +121,16 @@ if __name__ == '__main__':
     w_bbox_loss = 0.000/(1000*1000)
     seqae_batch_size = 512
     seqae_requires_grad = False
-    seqae_path = '/home/dchenbs/workspace/Seq2Seq-AutoEncoder/runs/Jan02_11-49-33_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_step4350k'
+
+    # seqae_path = '/home/dchenbs/workspace/Seq2Seq-AutoEncoder/runs/Jan02_11-49-33_host19-SA1B-[327MB-16queries-1024]-[lr1e-05-bs16x1step-8gpu]/checkpoints/checkpoint_step4350k'
+    # from model.seq2seq_autoencoder import Seq2SeqAutoEncoderModel
+    # cache_dir='segmentation/cached_segments/seqae_cache_dir'
+    
+    seqae_path = '/home/dchenbs/workspace/Seq2Seq-AutoEncoder/runs/Feb19_23-10-24_eez116-CLEVR_PATCH-[8MB-16queries-1024]-[lr1e-05-bs128x1step-1gpu]/checkpoints/checkpoint_step10k'
+    from model.linear_autoencoder import Seq2SeqAutoEncoderModel
+    output_dir += '-LinearAE'
+    cache_dir='segmentation/cached_segments/linearAE_cache_dir'
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
     # lora tuning config
     rank=64
@@ -132,6 +140,7 @@ if __name__ == '__main__':
         'visual_positional_embedding',
         'segment_modeling_head',
         'embed_tokens',
+        'seqae'
     ]
 
     # [ShareGPT-4V] tokenizer & dataset config 
@@ -166,7 +175,7 @@ if __name__ == '__main__':
     
     seqae = Seq2SeqAutoEncoderModel.from_pretrained(seqae_path).eval()
     seqae.enable_caching_latents(
-        cache_dir='segmentation/cached_segments/seqae_cache_dir',
+        cache_dir=cache_dir,
         use_existing=True
         )
 
@@ -175,8 +184,8 @@ if __name__ == '__main__':
 
     additional_modules_to_save = []
     for name, param in model.named_parameters():
-        if 'seqae' in name:
-            param.requires_grad = False
+        # if 'seqae' in name:
+        #     param.requires_grad = False
         for keyword in additional_tunable_params_keyword:
             if keyword in name:
                 param.requires_grad = True
@@ -241,15 +250,15 @@ if __name__ == '__main__':
 
     training_arguments = TrainingArguments(
         output_dir=output_dir,
-        per_device_train_batch_size=2,
+        per_device_train_batch_size=4,
         gradient_accumulation_steps=2,
         learning_rate=1e-4,
         lr_scheduler_type="cosine",
         save_strategy="steps",
-        save_steps=200,
+        save_steps=1000,
         logging_steps=1,
         # max_steps=100000,
-        num_train_epochs=5,
+        num_train_epochs=50,
         push_to_hub=False,
         bf16=True,
     )

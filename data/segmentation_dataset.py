@@ -34,6 +34,68 @@ def get_bounding_box(mask):
     return x_min, y_min, w, h
 
 
+class ClevrPatchDataset:
+    def __init__(self, clevr_root, patch_size):
+        self.dataset_name = 'clevr_patch'
+        self.clevr_root = clevr_root
+        self.patch_size = patch_size
+        self.img_paths = []
+        
+        for img_file in os.listdir(clevr_root):
+            self.img_paths.append(os.path.join(clevr_root, img_file))
+        print(f"clevr_patch dataset loaded. {len(self.img_paths)} images found.")
+
+        self.num_segments = 1000000000
+        self.num_images = len(self.img_paths)
+        self.num_categories = 1
+
+        random.shuffle(self.img_paths)
+
+    def get_all_captions(self):
+        return []
+    
+    def load_segments_from_one_image(self):
+        success = False
+        while not success:
+            img_path = self.img_paths[np.random.randint(0, len(self.img_paths))]
+            try:
+                image = np.array(Image.open(img_path).convert('RGB'))
+                success = True
+            except:
+                continue
+
+        segments = []
+        h, w = image.shape[:2]
+        n_h = h // self.patch_size
+        n_h += 1 if h % self.patch_size != 0 else 0
+
+        n_w = w // self.patch_size
+        n_w += 1 if w % self.patch_size != 0 else 0
+
+        n_patches = n_h * n_w
+        mask = np.ones((self.patch_size, self.patch_size), dtype=bool)
+
+        for i in range(n_h):
+            for j in range(n_w):
+                y = i * self.patch_size
+                x = j * self.patch_size
+                # masks[i*n_w+j, y:y+self.patch_size+1, x:x+self.patch_size+1] = True
+                # mask[y:y+self.patch_size+1, x:x+self.patch_size+1] = True
+                segments.append({
+                    "patch": image[y:y+self.patch_size+1, x:x+self.patch_size+1],
+                    "mask": mask,
+                    'image_path': img_path,
+                    'bbox': [x, y, self.patch_size, self.patch_size], # 'x', 'y', 'width', 'height
+                    "name": "",
+                    "caption": "",
+                })
+
+        return segments
+    
+    def class_name_to_class_id(self, name):
+        return 0
+
+
 class SA1BDataset:
     def __init__(self, sa1b_root):
         self.dataset_name = 'sa1b'

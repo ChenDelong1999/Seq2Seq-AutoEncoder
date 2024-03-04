@@ -21,7 +21,6 @@ device = torch.device('cuda')
 
 
 from data.dataset import get_dataset
-from model.seq2seq_autoencoder import Seq2SeqAutoEncoderConfig, Seq2SeqAutoEncoderModel
 from utils import ddp_setup, get_params_count_summary, save_hf_pretrained_model
 from loss import seq2seq_autoencoder_loss
 
@@ -96,6 +95,11 @@ def main(rank, world_size, args):
 
     if args.rank == 0:
         print(f'Loaded model config from {args.model_config}')
+    if 'seq2seq' in args.model_config:
+        from model.seq2seq_autoencoder import Seq2SeqAutoEncoderConfig, Seq2SeqAutoEncoderModel
+    elif 'linear' in args.model_config:
+        from model.linear_autoencoder import Seq2SeqAutoEncoderConfig, Seq2SeqAutoEncoderModel
+        
     if args.model_config.endswith('.json'):
         config = Seq2SeqAutoEncoderConfig.from_json_file(args.model_config)
         model = Seq2SeqAutoEncoderModel(config)

@@ -2,7 +2,7 @@
 from torchvision.datasets import CIFAR10, CIFAR100, STL10, MNIST
 from torchvision.transforms import ToTensor
 from .image_classification_dataset import SeqImgClsDataset
-from .segmentation_dataset import SA1BDataset, COCODataset, LVISDataset, SeqMaskDataset, V3DetDataset, VisualGenomeDataset
+from .segmentation_dataset import SA1BDataset, COCODataset, LVISDataset, SeqMaskDataset, V3DetDataset, VisualGenomeDataset, ClevrPatchDataset
 
 def get_dataset(args):
     # if args.dataset=='cifar10':
@@ -107,6 +107,21 @@ def get_dataset(args):
             data_seq_length=args.data_seq_length,
             min_resize_ratio=args.min_resize_ratio,
         )
+
+    elif args.dataset=='clevr_patch':
+        train_dataset = SeqMaskDataset(
+            dataset=ClevrPatchDataset(clevr_root=args.data_dir, patch_size=32),
+            num_queries=args.num_queries, 
+            data_seq_length=args.data_seq_length,
+            min_resize_ratio=args.min_resize_ratio,
+        )
+        test_dataset = SeqMaskDataset(
+            dataset=ClevrPatchDataset(clevr_root=args.data_dir, patch_size=32),
+            num_queries=args.num_queries, 
+            data_seq_length=args.data_seq_length,
+            min_resize_ratio=args.min_resize_ratio,
+        )
+        
         
     return train_dataset, test_dataset
 

@@ -1,0 +1,29 @@
+{
+  "model_type": "linear_autoencoder",
+  "architectures": ["LinearAutoEncoderModel"],
+
+  "data_seq_length": 1024,
+  "d_latent": 768,
+  "d_model": 768,
+  "input_channels": 5,
+  "num_queries": 16,
+
+  "decoder_attention_heads": 12,
+  "decoder_ffn_dim": 4096,
+  "decoder_layerdrop": 0.0,
+  "decoder_layers": 16,
+
+  "encoder_attention_heads": 12,
+  "encoder_ffn_dim": 4096,
+  "encoder_layerdrop": 0.0,
+  "encoder_layers": 16,
+
+  "attention_dropout": 0.1,
+  "activation_dropout": 0.1,
+  "dropout": 0.1,
+  "activation_function": "gelu",
+  "init_std": 0.02,
+  "loss": "mse",
+  "torch_dtype": "float32",
+  "transformers_version": "4.35.0"
+}
